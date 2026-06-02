@@ -1,0 +1,2562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>NetWatch — Network Monitoring</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#080b10;
+  --bg2:#0d1117;
+  --bg3:#111820;
+  --surface:#141c26;
+  --border:#1e2d3d;
+  --border2:#243347;
+  --text:#a8b8cc;
+  --text-dim:#4a6070;
+  --text-bright:#ddeeff;
+  --green:#00d084;
+  --green-dim:rgba(0,208,132,0.12);
+  --yellow:#f5c518;
+  --yellow-dim:rgba(245,197,24,0.12);
+  --red:#ff4757;
+  --red-dim:rgba(255,71,87,0.12);
+  --blue:#38b2ff;
+  --blue-dim:rgba(56,178,255,0.1);
+  --orange:#ff8c42;
+  --orange-dim:rgba(255,140,66,0.12);
+  --accent:#00d084;
+  --font-mono:'IBM Plex Mono',monospace;
+  --font-sans:'IBM Plex Sans',sans-serif;
+}
+
+html,body{height:100%;overflow:hidden}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-mono);
+  font-size:13px;
+  display:flex;
+  flex-direction:column;
+}
+
+/* Scanline overlay */
+body::after{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* ── HEADER ── */
+.header{
+  display:flex;align-items:center;gap:1rem;
+  padding:0.6rem 1.2rem;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.logo{
+  font-weight:600;font-size:1rem;
+  color:var(--green);letter-spacing:0.05em;
+  display:flex;align-items:center;gap:0.5rem;
+}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(0,208,132,0.4)}50%{box-shadow:0 0 0 6px rgba(0,208,132,0)}}
+
+.header-stats{
+  display:flex;gap:1.5rem;margin-left:auto;
+}
+.hstat{text-align:center;}
+.hstat-val{font-size:1.1rem;font-weight:600;color:var(--text-bright);}
+.hstat-label{font-size:0.62rem;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;}
+.hstat-val.ok{color:var(--green);}
+.hstat-val.warn{color:var(--yellow);}
+.hstat-val.crit{color:var(--red);}
+
+.clock{font-size:0.75rem;color:var(--text-dim);padding-left:1rem;border-left:1px solid var(--border);}
+
+/* ── NAV ── */
+.nav{
+  display:flex;gap:0;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+  overflow-x:auto;
+}
+.nav-btn{
+  padding:0.55rem 1.1rem;
+  font-family:var(--font-mono);font-size:0.7rem;
+  color:var(--text-dim);background:none;border:none;cursor:pointer;
+  letter-spacing:0.08em;text-transform:uppercase;
+  border-bottom:2px solid transparent;
+  white-space:nowrap;transition:color 0.2s,border-color 0.2s;
+}
+.nav-btn:hover{color:var(--text);}
+.nav-btn.active{color:var(--green);border-bottom-color:var(--green);}
+
+/* ── LAYOUT ── */
+.app{display:flex;flex:1;overflow:hidden;}
+.main{flex:1;overflow-y:auto;padding:1.2rem;}
+
+/* ── VIEWS ── */
+.view{display:none;}
+.view.active{display:block;}
+
+/* ── DASHBOARD ── */
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:0.75rem;margin-bottom:1rem;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem;}
+
+.stat-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:0.9rem 1rem;
+}
+.stat-label{font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:0.4rem;}
+.stat-value{font-size:1.6rem;font-weight:600;color:var(--text-bright);line-height:1;}
+.stat-sub{font-size:0.65rem;color:var(--text-dim);margin-top:0.3rem;}
+.stat-value.ok{color:var(--green);}
+.stat-value.warn{color:var(--yellow);}
+.stat-value.crit{color:var(--red);}
+
+/* Panels */
+.panel{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  margin-bottom:0.75rem;overflow:hidden;
+}
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0.6rem 1rem;border-bottom:1px solid var(--border);
+}
+.panel-title{font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);}
+.panel-body{padding:1rem;}
+
+/* Topology map */
+.topo-map{
+  position:relative;height:200px;
+  background:radial-gradient(ellipse at center, rgba(0,208,132,0.04) 0%, transparent 70%);
+  overflow:hidden;
+}
+.topo-node{
+  position:absolute;display:flex;flex-direction:column;align-items:center;gap:4px;
+  cursor:pointer;transition:transform 0.2s;
+}
+.topo-node:hover{transform:scale(1.1);}
+.topo-node-icon{
+  width:36px;height:36px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;border:2px solid;
+}
+.topo-node-label{font-size:0.58rem;color:var(--text-dim);text-align:center;max-width:60px;line-height:1.2;}
+.topo-node.ok .topo-node-icon{background:var(--green-dim);border-color:var(--green);box-shadow:0 0 8px rgba(0,208,132,0.3);}
+.topo-node.warn .topo-node-icon{background:var(--yellow-dim);border-color:var(--yellow);}
+.topo-node.crit .topo-node-icon{background:var(--red-dim);border-color:var(--red);animation:blink 1s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.5}}
+
+svg.topo-lines{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+
+/* Alert list */
+.alert-item{
+  display:flex;align-items:flex-start;gap:0.75rem;
+  padding:0.6rem 0;border-bottom:1px solid var(--border);
+}
+.alert-item:last-child{border:none;}
+.alert-sev{
+  width:6px;flex-shrink:0;height:100%;min-height:40px;border-radius:3px;
+}
+.alert-sev.crit{background:var(--red);}
+.alert-sev.high{background:var(--orange);}
+.alert-sev.medium{background:var(--yellow);}
+.alert-sev.low{background:var(--blue);}
+.alert-sev.info{background:var(--text-dim);}
+.alert-msg{font-size:0.72rem;color:var(--text);line-height:1.5;}
+.alert-meta{font-size:0.62rem;color:var(--text-dim);margin-top:0.2rem;}
+.alert-badge{
+  display:inline-block;padding:0.1rem 0.4rem;border-radius:3px;
+  font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;margin-right:0.4rem;
+}
+.badge-crit{background:var(--red-dim);color:var(--red);}
+.badge-high{background:var(--orange-dim);color:var(--orange);}
+.badge-medium{background:var(--yellow-dim);color:var(--yellow);}
+.badge-low{background:var(--blue-dim);color:var(--blue);}
+.badge-ok{background:var(--green-dim);color:var(--green);}
+.badge-info{background:rgba(100,120,140,0.15);color:var(--text-dim);}
+
+/* Mini sparkline */
+.sparkline-wrap{display:flex;align-items:flex-end;gap:2px;height:40px;}
+.spark-bar{
+  flex:1;border-radius:2px 2px 0 0;
+  transition:height 0.5s ease;
+}
+.spark-bar.green{background:rgba(0,208,132,0.6);}
+.spark-bar.yellow{background:rgba(245,197,24,0.6);}
+.spark-bar.red{background:rgba(255,71,87,0.6);}
+.spark-bar.blue{background:rgba(56,178,255,0.6);}
+
+/* Device table */
+.tbl{width:100%;border-collapse:collapse;}
+.tbl th{
+  font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--text-dim);padding:0.5rem 0.75rem;
+  border-bottom:1px solid var(--border);text-align:left;font-weight:500;
+}
+.tbl td{
+  font-size:0.72rem;padding:0.55rem 0.75rem;
+  border-bottom:1px solid rgba(30,45,61,0.5);
+  color:var(--text);
+}
+.tbl tr:hover td{background:rgba(255,255,255,0.02);}
+.tbl tr:last-child td{border:none;}
+
+.status-dot{
+  display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;
+}
+.status-dot.ok{background:var(--green);box-shadow:0 0 4px var(--green);}
+.status-dot.warn{background:var(--yellow);}
+.status-dot.crit{background:var(--red);animation:blink 1s infinite;}
+.status-dot.offline{background:var(--text-dim);}
+
+/* Bandwidth bar */
+.bw-bar-wrap{display:flex;align-items:center;gap:0.5rem;}
+.bw-bar{height:6px;border-radius:3px;background:var(--border);flex:1;overflow:hidden;}
+.bw-fill{height:100%;border-radius:3px;transition:width 1s ease;}
+.bw-fill.ok{background:var(--green);}
+.bw-fill.warn{background:var(--yellow);}
+.bw-fill.crit{background:var(--red);}
+.bw-pct{font-size:0.62rem;color:var(--text-dim);min-width:30px;text-align:right;}
+
+/* ── SITES VIEW ── */
+.site-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:0.75rem;}
+.site-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:1rem;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;
+}
+.site-card:hover{border-color:var(--border2);box-shadow:0 4px 16px rgba(0,0,0,0.3);}
+.site-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;}
+.site-name{font-size:0.85rem;font-weight:600;color:var(--text-bright);}
+.site-type{font-size:0.6rem;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;}
+.site-score{
+  font-size:1.4rem;font-weight:600;
+}
+.site-score.ok{color:var(--green);}
+.site-score.warn{color:var(--yellow);}
+.site-score.crit{color:var(--red);}
+
+.site-links{display:flex;gap:0.5rem;margin-bottom:0.75rem;}
+.link-pill{
+  font-size:0.62rem;padding:0.2rem 0.5rem;border-radius:3px;
+  display:flex;align-items:center;gap:0.3rem;
+}
+.link-pill.ok{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,208,132,0.2);}
+.link-pill.down{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,71,87,0.2);}
+.link-pill.warn{background:var(--yellow-dim);color:var(--yellow);border:1px solid rgba(245,197,24,0.2);}
+
+.site-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;}
+.site-metric{text-align:center;}
+.site-metric-val{font-size:0.9rem;font-weight:600;color:var(--text-bright);}
+.site-metric-label{font-size:0.58rem;color:var(--text-dim);}
+
+/* ── CONSOLE ── */
+.console-layout{display:grid;grid-template-columns:260px 1fr;gap:0.75rem;height:calc(100vh - 130px);}
+.console-sidebar{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.console-sidebar-head{
+  padding:0.75rem;border-bottom:1px solid var(--border);
+}
+.search-input{
+  width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:4px;
+  padding:0.4rem 0.6rem;color:var(--text);font-family:var(--font-mono);font-size:0.72rem;
+}
+.search-input:focus{outline:none;border-color:var(--green);}
+.device-list{flex:1;overflow-y:auto;}
+.device-list-item{
+  padding:0.6rem 0.75rem;cursor:pointer;border-bottom:1px solid rgba(30,45,61,0.4);
+  transition:background 0.15s;
+}
+.device-list-item:hover{background:rgba(0,208,132,0.04);}
+.device-list-item.selected{background:rgba(0,208,132,0.08);border-left:2px solid var(--green);}
+.dli-name{font-size:0.75rem;color:var(--text-bright);margin-bottom:0.15rem;}
+.dli-ip{font-size:0.62rem;color:var(--text-dim);}
+
+.console-main{
+  display:flex;flex-direction:column;gap:0.75rem;overflow:hidden;
+}
+.console-tools{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:0.75rem;flex-shrink:0;
+}
+.tool-btns{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem;}
+.tool-btn{
+  padding:0.35rem 0.85rem;border-radius:4px;font-family:var(--font-mono);font-size:0.68rem;
+  cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text);
+  transition:all 0.15s;letter-spacing:0.04em;
+}
+.tool-btn:hover{border-color:var(--green);color:var(--green);background:var(--green-dim);}
+.tool-btn.running{border-color:var(--yellow);color:var(--yellow);background:var(--yellow-dim);}
+
+.terminal{
+  flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:1rem;overflow-y:auto;font-size:0.72rem;line-height:1.8;min-height:200px;
+}
+.term-line{display:flex;gap:0.5rem;}
+.term-prompt{color:var(--green);flex-shrink:0;}
+.term-cmd{color:var(--text-bright);}
+.term-out{color:var(--text);padding-left:1rem;}
+.term-ok{color:var(--green);}
+.term-warn{color:var(--yellow);}
+.term-err{color:var(--red);}
+.term-cursor{
+  display:inline-block;width:8px;height:1em;background:var(--green);
+  animation:cursor-blink 1s infinite;vertical-align:text-bottom;
+}
+@keyframes cursor-blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── ALERTS VIEW ── */
+.alert-filters{display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;}
+.filter-btn{
+  padding:0.3rem 0.75rem;border-radius:4px;font-family:var(--font-mono);font-size:0.65rem;
+  cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text-dim);
+  transition:all 0.15s;letter-spacing:0.06em;text-transform:uppercase;
+}
+.filter-btn.active{background:var(--green-dim);border-color:var(--green);color:var(--green);}
+
+/* ── TOPOLOGY VIEW ── */
+.topo-full{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  position:relative;height:calc(100vh - 200px);overflow:hidden;
+}
+.topo-full-canvas{width:100%;height:100%;}
+.topo-legend{
+  position:absolute;bottom:1rem;left:1rem;
+  background:rgba(13,17,23,0.9);border:1px solid var(--border);border-radius:4px;
+  padding:0.6rem 0.8rem;display:flex;flex-direction:column;gap:0.35rem;
+}
+.topo-legend-item{display:flex;align-items:center;gap:0.5rem;font-size:0.62rem;color:var(--text-dim);}
+
+/* ── REPORTS VIEW ── */
+.chart-wrap{height:120px;display:flex;align-items:flex-end;gap:3px;padding-top:0.5rem;}
+.chart-bar{
+  flex:1;border-radius:3px 3px 0 0;
+  background:linear-gradient(to top, rgba(0,208,132,0.4), rgba(0,208,132,0.8));
+  transition:height 0.5s ease;cursor:pointer;position:relative;
+}
+.chart-bar:hover{background:linear-gradient(to top, rgba(0,208,132,0.6), rgba(0,208,132,1));}
+.chart-labels{display:flex;gap:3px;margin-top:0.3rem;}
+.chart-label{flex:1;text-align:center;font-size:0.55rem;color:var(--text-dim);}
+
+.metric-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0.5rem 0;border-bottom:1px solid rgba(30,45,61,0.5);
+}
+.metric-row:last-child{border:none;}
+.metric-name{font-size:0.72rem;color:var(--text);}
+.metric-val{font-size:0.72rem;font-weight:600;color:var(--text-bright);}
+.metric-trend{font-size:0.62rem;margin-left:0.4rem;}
+.metric-trend.up{color:var(--green);}
+.metric-trend.down{color:var(--red);}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+/* Button */
+.btn{
+  padding:0.4rem 0.9rem;border-radius:4px;font-family:var(--font-mono);font-size:0.68rem;
+  cursor:pointer;border:1px solid;transition:all 0.15s;letter-spacing:0.04em;
+}
+.btn-primary{background:var(--green-dim);border-color:var(--green);color:var(--green);}
+.btn-primary:hover{background:var(--green);color:var(--bg);}
+.btn-ghost{background:transparent;border-color:var(--border);color:var(--text-dim);}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text);}
+
+.section-title{
+  font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;
+  color:var(--text-dim);margin-bottom:0.75rem;
+  display:flex;align-items:center;gap:0.5rem;
+}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+.tag{
+  display:inline-block;padding:0.1rem 0.45rem;border-radius:3px;
+  font-size:0.6rem;letter-spacing:0.05em;
+  background:var(--bg3);border:1px solid var(--border);color:var(--text-dim);
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-dot"></div>
+    NETWATCH
+  </div>
+
+  <!-- Location selector -->
+  <div style="display:flex;align-items:center;gap:0.4rem;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:0.25rem 0.6rem;">
+    <span style="font-size:0.62rem;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;">Site:</span>
+    <select id="site-selector" onchange="onSiteChange()" style="background:transparent;border:none;color:var(--green);font-family:var(--font-mono);font-size:0.75rem;font-weight:600;cursor:pointer;outline:none;letter-spacing:0.04em;">
+      <option value="HQ">HQ Data Center</option>
+      <option value="Kampala Branch">Kampala Branch</option>
+      <option value="Mbarara Branch">Mbarara Branch</option>
+      <option value="Jinja Branch">Jinja Branch</option>
+      <option value="Entebbe Office">Entebbe Office</option>
+      <option value="Gulu Branch">Gulu Branch</option>
+    </select>
+  </div>
+
+  <div class="header-stats">
+    <div class="hstat"><div class="hstat-val ok" id="h-online">—</div><div class="hstat-label">Online</div></div>
+    <div class="hstat"><div class="hstat-val warn" id="h-warn">—</div><div class="hstat-label">Degraded</div></div>
+    <div class="hstat"><div class="hstat-val crit" id="h-crit">—</div><div class="hstat-label">Critical</div></div>
+    <div class="hstat"><div class="hstat-val" id="h-alerts">—</div><div class="hstat-label">Alerts</div></div>
+  </div>
+  <div class="clock" id="clock">--:--:--</div>
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <button class="nav-btn active" onclick="showView('dashboard',this)">⬛ Dashboard</button>
+  <button class="nav-btn" onclick="showView('devices',this)">⬜ Devices</button>
+  <button class="nav-btn" onclick="showView('topology',this)">⬡ Topology</button>
+  <button class="nav-btn" onclick="showView('alerts',this)">⚑ Alerts</button>
+  <button class="nav-btn" onclick="showView('console',this)">≥_ Console</button>
+  <button class="nav-btn" onclick="showView('reports',this)">▦ Reports</button>
+</div>
+
+<!-- APP -->
+<div class="app">
+<div class="main">
+
+<!-- ════════════════════════ DASHBOARD ════════════════════════ -->
+<div class="view active" id="view-dashboard">
+
+  <div class="grid-4">
+    <div class="stat-card">
+      <div class="stat-label">Network Health</div>
+      <div class="stat-value ok" id="dash-health">—</div>
+      <div class="stat-sub" id="dash-health-sub">Calculating...</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg Latency</div>
+      <div class="stat-value" id="dash-latency">—</div>
+      <div class="stat-sub" id="dash-latency-sub">Threshold: 50ms</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Throughput</div>
+      <div class="stat-value" id="dash-throughput">—</div>
+      <div class="stat-sub" id="dash-throughput-sub">Estimated</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active Alerts</div>
+      <div class="stat-value" id="dash-alert-count">—</div>
+      <div class="stat-sub" id="dash-alert-sub">This site</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Topology mini -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Network Topology</span>
+        <button class="btn btn-ghost" onclick="showView('topology',document.querySelector('.nav-btn:nth-child(3)'))">Expand →</button>
+      </div>
+      <div class="panel-body" style="padding:0;">
+        <div class="topo-map" id="topo-mini">
+          <svg class="topo-lines" id="topo-svg"></svg>
+          <!-- nodes injected by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Active alerts -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Active Alerts</span>
+        <span style="font-size:0.62rem;color:var(--red);" id="dash-alert-badge">—</span>
+      </div>
+      <div class="panel-body" style="padding:0.5rem 1rem;" id="dash-alerts"></div>
+    </div>
+  </div>
+
+  <div class="section-title" id="bw-section-title">Bandwidth Utilization — Last 24h</div>
+  <div class="panel">
+    <div class="panel-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.5rem;">
+        <div>
+          <div style="font-size:0.65rem;color:var(--text-dim);margin-bottom:0.4rem;" id="spark-label-1">Core Switch</div>
+          <div class="sparkline-wrap" id="spark-1"></div>
+          <div style="font-size:0.65rem;color:var(--green);margin-top:0.25rem;" id="spark-val-1">—</div>
+        </div>
+        <div>
+          <div style="font-size:0.65rem;color:var(--text-dim);margin-bottom:0.4rem;" id="spark-label-2">WAN / Uplink</div>
+          <div class="sparkline-wrap" id="spark-2"></div>
+          <div style="font-size:0.65rem;color:var(--yellow);margin-top:0.25rem;" id="spark-val-2">—</div>
+        </div>
+        <div>
+          <div style="font-size:0.65rem;color:var(--text-dim);margin-bottom:0.4rem;" id="spark-label-3">VPN / Gateway</div>
+          <div class="sparkline-wrap" id="spark-3"></div>
+          <div style="font-size:0.65rem;color:var(--green);margin-top:0.25rem;" id="spark-val-3">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Top Devices — Highest Latency</div>
+  <div class="panel">
+    <div class="panel-body" style="padding:0;">
+      <table class="tbl">
+        <thead><tr>
+          <th>Device</th><th>IP</th><th>Location</th><th>Latency</th><th>Pkt Loss</th><th>Status</th>
+        </tr></thead>
+        <tbody id="top-devices"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ DEVICES ════════════════════════ -->
+<div class="view" id="view-devices">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+    <div class="section-title" style="margin:0;flex:1;" id="dev-count-label">All Devices</div>
+    <div style="display:flex;gap:0.5rem;">
+      <input class="search-input" style="width:180px;" placeholder="Search devices..." id="dev-search" oninput="filterDevices()">
+      <button class="btn btn-primary" onclick="openAddDevice()">+ Add Device</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-body" style="padding:0;">
+      <table class="tbl" id="devices-tbl">
+        <thead><tr>
+          <th>Status</th><th>Hostname</th><th>Type</th><th>IP Address</th><th>Location</th><th>CPU</th><th>Memory</th><th>Uptime</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="devices-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ SITES ════════════════════════ -->
+<div class="view" id="view-sites">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+    <div class="section-title" style="margin:0;flex:1;">Remote Sites (8)</div>
+    <button class="btn btn-primary" onclick="openBulkDiag()">⚙ Run Bulk Diagnostics</button>
+  </div>
+  <div class="site-grid" id="site-grid"></div>
+</div>
+
+<!-- ════════════════════════ TOPOLOGY ════════════════════════ -->
+<div class="view" id="view-topology">
+  <!-- Toolbar -->
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;flex-wrap:wrap;">
+    <!-- Mode buttons -->
+    <div style="display:flex;gap:0.35rem;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:0.25rem;">
+      <button class="topo-tool-btn active" id="tb-select"  onclick="setTopoTool('select')"  title="Select / Move (V)">↖ Select</button>
+      <button class="topo-tool-btn"        id="tb-addnode" onclick="setTopoTool('addnode')" title="Add Device (A)">＋ Add Node</button>
+      <button class="topo-tool-btn"        id="tb-connect" onclick="setTopoTool('connect')" title="Draw Link (L)">⟵ Link</button>
+      <button class="topo-tool-btn"        id="tb-delete"  onclick="setTopoTool('delete')"  title="Delete (Del)">✕ Delete</button>
+    </div>
+    <!-- View -->
+    <div style="display:flex;gap:0.35rem;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:0.25rem;">
+      <button class="topo-tool-btn active" id="topo-btn-geo"     onclick="setTopoMode('geo')"    >🌍 Geo</button>
+      <button class="topo-tool-btn"        id="topo-btn-logical"  onclick="setTopoMode('logical')">⬡ Logical</button>
+    </div>
+    <!-- Link type selector -->
+    <div style="display:flex;align-items:center;gap:0.4rem;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:0.25rem 0.6rem;">
+      <span style="font-size:0.6rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Link:</span>
+      <select id="link-type-sel" style="background:transparent;border:none;color:var(--text);font-family:var(--font-mono);font-size:0.68rem;cursor:pointer;outline:none;">
+        <option value="ethernet">Ethernet</option>
+        <option value="fiber">Fiber</option>
+        <option value="vpn">VPN</option>
+        <option value="wireless">Wireless</option>
+        <option value="wan">WAN/MPLS</option>
+      </select>
+    </div>
+    <!-- Actions -->
+    <button class="btn btn-ghost" onclick="autoLayoutTopo()" title="Auto-arrange nodes">⟳ Auto Layout</button>
+    <button class="btn btn-ghost" onclick="clearTopoDesign()" title="Clear canvas">🗑 Clear</button>
+    <button class="btn btn-ghost" onclick="exportTopoJSON()" title="Export JSON">⬇ Export</button>
+    <button class="btn btn-primary" onclick="importTopoFromDevices()" title="Import from device list">⟲ Import Devices</button>
+    <span style="margin-left:auto;font-size:0.6rem;color:var(--text-dim);" id="topo-hint">Select: drag to move · Link: click source then target</span>
+  </div>
+
+  <!-- Canvas + sidebar layout -->
+  <div style="display:grid;grid-template-columns:1fr 220px;gap:0.6rem;height:calc(100vh - 185px);">
+    <!-- Canvas -->
+    <div class="topo-full" style="position:relative;height:100%;">
+      <canvas id="topo-canvas" style="display:block;width:100%;height:100%;"></canvas>
+      <div id="topo-tooltip" style="display:none;position:absolute;background:#0d1117;border:1px solid #243347;border-radius:5px;padding:0.5rem 0.75rem;font-size:0.68rem;color:#ddeeff;pointer-events:none;max-width:200px;line-height:1.7;z-index:10;"></div>
+      <!-- Legend -->
+      <div class="topo-legend">
+        <div class="topo-legend-item"><span style="width:10px;height:2px;background:var(--green);display:inline-block;"></span> Ethernet</div>
+        <div class="topo-legend-item"><span style="width:10px;height:2px;background:var(--blue);display:inline-block;"></span> Fiber</div>
+        <div class="topo-legend-item"><span style="width:10px;height:2px;background:var(--yellow);border-top:2px dashed var(--yellow);display:inline-block;height:0;"></span> VPN</div>
+        <div class="topo-legend-item"><span style="width:10px;height:2px;background:var(--orange);display:inline-block;"></span> WAN</div>
+      </div>
+      <!-- Node count badge -->
+      <div style="position:absolute;top:0.6rem;right:0.6rem;font-size:0.62rem;color:var(--text-dim);background:rgba(13,17,23,0.85);padding:0.3rem 0.6rem;border-radius:4px;border:1px solid var(--border);" id="topo-stats">0 nodes · 0 links</div>
+    </div>
+
+    <!-- Properties sidebar -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow-y:auto;display:flex;flex-direction:column;">
+      <div style="padding:0.6rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);">Properties</div>
+      <div id="topo-props" style="padding:0.75rem;flex:1;">
+        <div style="font-size:0.68rem;color:var(--text-dim);text-align:center;margin-top:2rem;line-height:2;">
+          Select a node or link<br>to edit its properties
+        </div>
+      </div>
+      <!-- Device palette -->
+      <div style="border-top:1px solid var(--border);padding:0.6rem 0.75rem;">
+        <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:0.5rem;">Add Device</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.35rem;" id="device-palette"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.topo-tool-btn{
+  padding:0.28rem 0.65rem;border-radius:3px;font-family:var(--font-mono);font-size:0.65rem;
+  cursor:pointer;border:none;background:transparent;color:var(--text-dim);
+  transition:all 0.15s;letter-spacing:0.04em;white-space:nowrap;
+}
+.topo-tool-btn:hover{color:var(--text);background:rgba(255,255,255,0.05);}
+.topo-tool-btn.active{background:var(--green-dim);color:var(--green);}
+.topo-prop-row{margin-bottom:0.6rem;}
+.topo-prop-label{font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:0.25rem;}
+.topo-prop-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:0.35rem 0.5rem;color:var(--text-bright);font-family:var(--font-mono);font-size:0.68rem;}
+.topo-prop-input:focus{outline:none;border-color:var(--green);}
+.palette-btn{
+  padding:0.3rem 0.4rem;border-radius:3px;font-size:0.65rem;text-align:center;
+  background:var(--bg3);border:1px solid var(--border);color:var(--text-dim);
+  cursor:pointer;transition:all 0.15s;
+}
+.palette-btn:hover{border-color:var(--green);color:var(--green);background:var(--green-dim);}
+</style>
+
+<!-- ════════════════════════ ALERTS ════════════════════════ -->
+<div class="view" id="view-alerts">
+  <div class="alert-filters">
+    <button class="filter-btn active" onclick="filterAlerts('all',this)">All (7)</button>
+    <button class="filter-btn" onclick="filterAlerts('critical',this)">Critical (1)</button>
+    <button class="filter-btn" onclick="filterAlerts('high',this)">High (2)</button>
+    <button class="filter-btn" onclick="filterAlerts('medium',this)">Medium (3)</button>
+    <button class="filter-btn" onclick="filterAlerts('low',this)">Low (1)</button>
+    <div style="margin-left:auto;display:flex;gap:0.5rem;">
+      <button class="btn btn-ghost">Acknowledge All</button>
+      <button class="btn btn-primary">Export CSV</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-body" style="padding:0;">
+      <table class="tbl">
+        <thead><tr>
+          <th>Severity</th><th>Time</th><th>Device</th><th>Type</th><th>Message</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="alerts-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ CONSOLE ════════════════════════ -->
+<div class="view" id="view-console">
+  <div class="console-layout">
+    <div class="console-sidebar">
+      <div class="console-sidebar-head">
+        <div style="font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:0.5rem;">Select Device</div>
+        <input class="search-input" placeholder="Filter devices..." id="con-search" oninput="filterConsoleDevices()">
+      </div>
+      <div class="device-list" id="console-device-list"></div>
+    </div>
+    <div class="console-main">
+      <div class="console-tools">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:0.68rem;color:var(--text-dim);">Target: <span id="console-target" style="color:var(--green);">— Select a device —</span></span>
+          <button class="btn btn-ghost" onclick="clearTerminal()">Clear</button>
+        </div>
+        <div class="tool-btns">
+          <button class="tool-btn" onclick="runTool('ping')">▶ Ping Test</button>
+          <button class="tool-btn" onclick="runTool('traceroute')">▶ Traceroute</button>
+          <button class="tool-btn" onclick="runTool('snmp')">▶ SNMP Poll</button>
+          <button class="tool-btn" onclick="runTool('interfaces')">▶ Interface Status</button>
+          <button class="tool-btn" onclick="runTool('performance')">▶ Performance Check</button>
+          <button class="tool-btn" onclick="runTool('config')">▶ Config Validate</button>
+          <button class="tool-btn" onclick="runTool('rca')">⚙ AI Root Cause Analysis</button>
+        </div>
+      </div>
+      <div class="terminal" id="terminal">
+        <div class="term-line"><span class="term-prompt">netwatch$</span><span class="term-cmd"> Ready. Select a device and run a diagnostic.</span></div>
+        <div class="term-line"><span class="term-cursor"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ REPORTS ════════════════════════ -->
+<div class="view" id="view-reports">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+    <div style="font-size:0.75rem;font-weight:600;color:var(--text-bright);" id="report-site-title">Site Report</div>
+    <div style="font-size:0.62rem;color:var(--text-dim);" id="report-generated">—</div>
+  </div>
+
+  <div class="grid-3">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">SLA Compliance — 30 Days</span></div>
+      <div class="panel-body">
+        <div style="text-align:center;padding:0.5rem 0;">
+          <div style="font-size:2.5rem;font-weight:600;" id="rpt-sla-overall">—</div>
+          <div style="font-size:0.65rem;color:var(--text-dim);">Target: 99.5%</div>
+        </div>
+        <div class="metric-row"><span class="metric-name" id="rpt-sla-l1">—</span><span class="metric-val" id="rpt-sla-v1">—</span></div>
+        <div class="metric-row"><span class="metric-name" id="rpt-sla-l2">—</span><span class="metric-val" id="rpt-sla-v2">—</span></div>
+        <div class="metric-row"><span class="metric-name">Devices Online</span><span class="metric-val" id="rpt-sla-devices">—</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">MTTR (Mean Time to Resolve)</span></div>
+      <div class="panel-body">
+        <div style="text-align:center;padding:0.5rem 0;">
+          <div style="font-size:2.5rem;font-weight:600;color:var(--yellow);" id="rpt-mttr-overall">—</div>
+          <div style="font-size:0.65rem;color:var(--text-dim);">Target: &lt;20min</div>
+        </div>
+        <div class="metric-row"><span class="metric-name">Critical</span><span class="metric-val" id="rpt-mttr-crit">—</span></div>
+        <div class="metric-row"><span class="metric-name">High</span><span class="metric-val" id="rpt-mttr-high">—</span></div>
+        <div class="metric-row"><span class="metric-name">Medium</span><span class="metric-val" id="rpt-mttr-med">—</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Alert Volume — 30 Days</span></div>
+      <div class="panel-body">
+        <div style="text-align:center;padding:0.5rem 0;">
+          <div style="font-size:2.5rem;font-weight:600;color:var(--blue);" id="rpt-alert-total">—</div>
+          <div style="font-size:0.65rem;color:var(--text-dim);" id="rpt-alert-trend">—</div>
+        </div>
+        <div class="metric-row"><span class="metric-name">Auto-resolved</span><span class="metric-val" id="rpt-alert-auto">—</span></div>
+        <div class="metric-row"><span class="metric-name">Escalated</span><span class="metric-val" id="rpt-alert-esc">—</span></div>
+        <div class="metric-row"><span class="metric-name">Manual resolve</span><span class="metric-val" id="rpt-alert-manual">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Device health breakdown -->
+  <div class="section-title" id="rpt-device-title">Device Health Breakdown</div>
+  <div class="panel" style="margin-bottom:0.75rem;">
+    <div class="panel-body" style="padding:0;">
+      <table class="tbl" id="rpt-device-table">
+        <thead><tr>
+          <th>Device</th><th>Type</th><th>Status</th><th>CPU</th><th>Memory</th><th>Latency</th><th>Uptime</th>
+        </tr></thead>
+        <tbody id="rpt-device-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-title" id="rpt-bw-title">Bandwidth Trend — Last 30 Days</div>
+  <div class="panel">
+    <div class="panel-body">
+      <div class="chart-wrap" id="bw-chart"></div>
+      <div class="chart-labels" id="bw-labels"></div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0.75rem;margin-top:0.75rem;justify-content:flex-end;">
+    <button class="btn btn-ghost" onclick="exportReportPDF()">⬇ Export PDF</button>
+    <button class="btn btn-ghost" onclick="exportReportCSV()">⬇ Export CSV</button>
+    <button class="btn btn-primary" onclick="openScheduleModal()">🕐 Schedule Report</button>
+  </div>
+</div>
+
+<!-- ════════ PDF PREVIEW MODAL ════════ -->
+<div id="pdf-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;width:680px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:modalIn 0.25s ease;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.9rem 1.25rem;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div>
+        <div style="font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--green);margin-bottom:0.15rem;">Reports</div>
+        <div style="font-size:0.9rem;font-weight:600;color:var(--text-bright);">Network Report — Preview</div>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <button class="btn btn-primary" onclick="downloadPDF()" style="font-size:0.68rem;">⬇ Download PDF</button>
+        <button onclick="document.getElementById('pdf-overlay').style.display='none'" style="background:none;border:none;color:var(--text-dim);font-size:1.1rem;cursor:pointer;">✕</button>
+      </div>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding:1.5rem;background:#fff;" id="pdf-content">
+      <!-- injected by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SCHEDULE REPORT MODAL ════════ -->
+<div id="schedule-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;width:480px;max-width:95vw;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:modalIn 0.25s ease;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--green);margin-bottom:0.15rem;">Reports</div>
+        <div style="font-size:0.9rem;font-weight:600;color:var(--text-bright);">Schedule Automatic Report</div>
+      </div>
+      <button onclick="closeScheduleModal()" style="background:none;border:none;color:var(--text-dim);font-size:1.1rem;cursor:pointer;">✕</button>
+    </div>
+
+    <div id="sched-form-wrap" style="padding:1.25rem;display:flex;flex-direction:column;gap:0.8rem;">
+
+      <div>
+        <label class="form-label">Report Name</label>
+        <input class="form-input" id="sched-name" value="Monthly Network Summary" />
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+        <div>
+          <label class="form-label">Frequency</label>
+          <select class="form-input" id="sched-freq">
+            <option>Daily</option>
+            <option selected>Weekly</option>
+            <option>Monthly</option>
+            <option>On-demand</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Day / Time</label>
+          <select class="form-input" id="sched-day">
+            <option>Monday 08:00</option>
+            <option>Wednesday 08:00</option>
+            <option>Friday 17:00</option>
+            <option>Sunday 00:00</option>
+            <option>1st of month 08:00</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="form-label">Format</label>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;" id="sched-formats">
+          <label class="bulk-check-item"><input type="checkbox" checked value="pdf"> PDF</label>
+          <label class="bulk-check-item"><input type="checkbox" checked value="csv"> CSV</label>
+          <label class="bulk-check-item"><input type="checkbox" value="json"> JSON</label>
+        </div>
+      </div>
+
+      <div>
+        <label class="form-label">Sections to include</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.45rem;" id="sched-sections">
+          <label class="bulk-check-item"><input type="checkbox" checked value="sla"> SLA Compliance</label>
+          <label class="bulk-check-item"><input type="checkbox" checked value="mttr"> MTTR Metrics</label>
+          <label class="bulk-check-item"><input type="checkbox" checked value="alerts"> Alert Summary</label>
+          <label class="bulk-check-item"><input type="checkbox" checked value="bw"> Bandwidth Trend</label>
+          <label class="bulk-check-item"><input type="checkbox" value="devices"> Device Inventory</label>
+          <label class="bulk-check-item"><input type="checkbox" value="sites"> Site Health</label>
+        </div>
+      </div>
+
+      <div>
+        <label class="form-label">Deliver to (email addresses)</label>
+        <input class="form-input" id="sched-emails" placeholder="ops@company.com, manager@company.com" />
+      </div>
+
+      <div>
+        <label class="form-label">Notification channel</label>
+        <select class="form-input" id="sched-channel">
+          <option>Email only</option>
+          <option>Email + Slack</option>
+          <option>Email + SMS</option>
+          <option>All channels</option>
+        </select>
+      </div>
+
+      <!-- Existing schedules -->
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem;">
+        <div style="font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:0.5rem;">Existing Schedules</div>
+        <div id="sched-existing">
+          <div class="sched-existing-row">
+            <div>
+              <div style="font-size:0.72rem;color:var(--text-bright);">Weekly Network Digest</div>
+              <div style="font-size:0.62rem;color:var(--text-dim);">Every Monday 08:00 · PDF · <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a0cfd0d3e0c3cfcdd0c1ced98ec3cfcd">[email&#160;protected]</a></div>
+            </div>
+            <button class="btn btn-ghost" style="font-size:0.6rem;padding:0.15rem 0.5rem;color:var(--red);border-color:rgba(255,71,87,0.3);" onclick="this.closest('.sched-existing-row').remove()">Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div id="sched-footer" style="display:flex;justify-content:flex-end;gap:0.6rem;padding:1rem 1.25rem;border-top:1px solid var(--border);">
+      <button class="btn btn-ghost" onclick="closeScheduleModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSchedule()">Save Schedule</button>
+    </div>
+
+    <!-- Success state -->
+    <div id="sched-success" style="display:none;text-align:center;padding:2rem 1.5rem;">
+      <div style="font-size:2.2rem;margin-bottom:0.75rem;">📅</div>
+      <div style="font-size:0.9rem;font-weight:600;color:var(--green);margin-bottom:0.3rem;" id="sched-success-msg">Schedule saved!</div>
+      <div style="font-size:0.7rem;color:var(--text-dim);" id="sched-success-sub"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+.sched-existing-row{display:flex;align-items:center;justify-content:space-between;padding:0.45rem 0.65rem;background:var(--bg3);border:1px solid var(--border);border-radius:4px;margin-bottom:0.4rem;}
+</style>
+
+<!-- ════════ ADD DEVICE MODAL ════════ -->
+<div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center;">
+  <div id="modal-box" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;width:520px;max-width:95vw;box-shadow:0 24px 64px rgba(0,0,0,0.6);animation:modalIn 0.25s cubic-bezier(0.4,0,0.2,1);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--green);margin-bottom:0.2rem;">Network Monitor</div>
+        <div style="font-size:0.95rem;font-weight:600;color:var(--text-bright);">Add New Device</div>
+      </div>
+      <button onclick="closeAddDevice()" style="background:none;border:none;color:var(--text-dim);font-size:1.1rem;cursor:pointer;padding:0.25rem;transition:color 0.15s;" onmouseover="this.style.color='var(--text-bright)'" onmouseout="this.style.color='var(--text-dim)'">✕</button>
+    </div>
+
+    <div style="padding:1.25rem;display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;" id="modal-form">
+
+      <div style="grid-column:1/-1;">
+        <label class="form-label">Hostname / Device Name *</label>
+        <input class="form-input" id="f-name" placeholder="e.g. branch-gulu-gw" />
+        <div class="form-err" id="err-name"></div>
+      </div>
+
+      <div>
+        <label class="form-label">Device Type *</label>
+        <select class="form-input" id="f-type">
+          <option value="">— Select type —</option>
+          <option>Router</option>
+          <option>Switch</option>
+          <option>Firewall</option>
+          <option>Server</option>
+          <option>Access Point</option>
+          <option>IoT Sensor</option>
+        </select>
+        <div class="form-err" id="err-type"></div>
+      </div>
+
+      <div>
+        <label class="form-label">IP Address *</label>
+        <input class="form-input" id="f-ip" placeholder="e.g. 10.60.1.1" />
+        <div class="form-err" id="err-ip"></div>
+      </div>
+
+      <div>
+        <label class="form-label">MAC Address</label>
+        <input class="form-input" id="f-mac" placeholder="e.g. AA:BB:CC:DD:EE:FF" />
+      </div>
+
+      <div>
+        <label class="form-label">Location Type *</label>
+        <select class="form-input" id="f-loctype" onchange="toggleSiteField()">
+          <option value="">— Select —</option>
+          <option value="HQ">On-Premise (HQ)</option>
+          <option value="Remote Branch">Remote Branch</option>
+          <option value="Remote / Home">Remote / Home</option>
+          <option value="Cloud">Cloud</option>
+        </select>
+        <div class="form-err" id="err-loctype"></div>
+      </div>
+
+      <div id="site-field">
+        <label class="form-label">Site / Branch Name</label>
+        <input class="form-input" id="f-site" placeholder="e.g. Gulu Branch" />
+      </div>
+
+      <div>
+        <label class="form-label">Monitoring Protocol</label>
+        <select class="form-input" id="f-proto">
+          <option>SNMP v2c</option>
+          <option>SNMP v3</option>
+          <option>ICMP Only</option>
+          <option>Agent</option>
+          <option>API</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="form-label">Poll Interval</label>
+        <select class="form-input" id="f-poll">
+          <option value="60">60 sec (Critical)</option>
+          <option value="120" selected>120 sec (Standard)</option>
+          <option value="300">300 sec (Low priority)</option>
+        </select>
+      </div>
+
+      <div style="grid-column:1/-1;">
+        <label class="form-label">Tags <span style="color:var(--text-dim);font-size:0.6rem;">(comma-separated)</span></label>
+        <input class="form-input" id="f-tags" placeholder="e.g. core, production, wan" />
+      </div>
+
+    </div>
+
+    <!-- Progress bar (hidden until submit) -->
+    <div id="modal-progress" style="display:none;padding:0 1.25rem 1rem;">
+      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:0.4rem;" id="progress-label">Registering device...</div>
+      <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+        <div id="progress-bar" style="height:100%;width:0%;background:var(--green);border-radius:2px;transition:width 0.4s ease;"></div>
+      </div>
+    </div>
+
+    <!-- Success state -->
+    <div id="modal-success" style="display:none;padding:1.5rem;text-align:center;">
+      <div style="font-size:2.5rem;margin-bottom:0.75rem;">✅</div>
+      <div style="font-size:0.9rem;font-weight:600;color:var(--green);margin-bottom:0.3rem;" id="success-msg">Device added successfully!</div>
+      <div style="font-size:0.72rem;color:var(--text-dim);">Now appearing in the device list and being polled.</div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:0.6rem;padding:1rem 1.25rem;border-top:1px solid var(--border);" id="modal-footer">
+      <button class="btn btn-ghost" onclick="closeAddDevice()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddDevice()">Add Device →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ BULK DIAGNOSTICS MODAL ════════ -->
+<div id="bulk-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;align-items:flex-start;justify-content:center;padding-top:3vh;overflow-y:auto;">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;width:780px;max-width:96vw;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:modalIn 0.25s cubic-bezier(0.4,0,0.2,1);margin-bottom:2rem;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--green);margin-bottom:0.2rem;">Remote Sites — Bulk Operation</div>
+        <div style="font-size:0.95rem;font-weight:600;color:var(--text-bright);">Bulk Diagnostics</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <div id="bulk-overall-badge" style="display:none;font-size:0.68rem;padding:0.25rem 0.65rem;border-radius:4px;"></div>
+        <button onclick="closeBulkDiag()" style="background:none;border:none;color:var(--text-dim);font-size:1.1rem;cursor:pointer;padding:0.25rem;transition:color 0.15s;" onmouseover="this.style.color='var(--text-bright)'" onmouseout="this.style.color='var(--text-dim)'">✕</button>
+      </div>
+    </div>
+
+    <!-- Config panel (pre-run) -->
+    <div id="bulk-config" style="padding:1.25rem;">
+      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:1rem;">Select diagnostic checks to run across all remote sites simultaneously.</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:1.25rem;" id="bulk-check-list">
+        <label class="bulk-check-item"><input type="checkbox" checked value="ping"> ICMP Ping Test</label>
+        <label class="bulk-check-item"><input type="checkbox" checked value="latency"> Latency & Jitter</label>
+        <label class="bulk-check-item"><input type="checkbox" checked value="vpn"> VPN Tunnel Status</label>
+        <label class="bulk-check-item"><input type="checkbox" checked value="bandwidth"> Bandwidth Utilisation</label>
+        <label class="bulk-check-item"><input type="checkbox" checked value="cpu"> CPU & Memory</label>
+        <label class="bulk-check-item"><input type="checkbox" checked value="interfaces"> Interface Health</label>
+        <label class="bulk-check-item"><input type="checkbox" value="config"> Config Compliance</label>
+        <label class="bulk-check-item"><input type="checkbox" value="routing"> Routing Table</label>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:1rem;padding:0.75rem;background:var(--bg3);border:1px solid var(--border);border-radius:5px;margin-bottom:1.25rem;">
+        <div style="font-size:0.68rem;color:var(--text-dim);">Sites to scan:</div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;" id="bulk-site-pills"></div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:0.6rem;">
+        <button class="btn btn-ghost" onclick="closeBulkDiag()">Cancel</button>
+        <button class="btn btn-primary" onclick="startBulkDiag()">▶ Run Diagnostics</button>
+      </div>
+    </div>
+
+    <!-- Results panel (during/after run) -->
+    <div id="bulk-results" style="display:none;padding:1.25rem;">
+
+      <!-- Global progress -->
+      <div style="margin-bottom:1rem;">
+        <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-dim);margin-bottom:0.35rem;">
+          <span id="bulk-progress-label">Initialising...</span>
+          <span id="bulk-progress-pct">0%</span>
+        </div>
+        <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
+          <div id="bulk-progress-bar" style="height:100%;width:0%;background:var(--green);border-radius:3px;transition:width 0.35s ease;"></div>
+        </div>
+      </div>
+
+      <!-- Per-site result cards -->
+      <div id="bulk-site-results" style="display:flex;flex-direction:column;gap:0.6rem;max-height:55vh;overflow-y:auto;padding-right:4px;"></div>
+
+      <!-- Footer -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+        <div id="bulk-summary-text" style="font-size:0.68rem;color:var(--text-dim);"></div>
+        <div style="display:flex;gap:0.5rem;">
+          <button class="btn btn-ghost" id="bulk-export-btn" style="display:none;" onclick="exportBulkReport()">Export Report</button>
+          <button class="btn btn-primary" id="bulk-rerun-btn" style="display:none;" onclick="startBulkDiag()">↺ Re-run</button>
+          <button class="btn btn-ghost" onclick="closeBulkDiag()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.bulk-check-item{
+  display:flex;align-items:center;gap:0.5rem;font-size:0.72rem;color:var(--text);
+  padding:0.45rem 0.65rem;background:var(--bg3);border:1px solid var(--border);border-radius:4px;
+  cursor:pointer;transition:border-color 0.15s;user-select:none;
+}
+.bulk-check-item:hover{border-color:var(--border2);}
+.bulk-check-item input[type=checkbox]{accent-color:var(--green);width:13px;height:13px;}
+.site-result-card{
+  background:var(--bg3);border:1px solid var(--border);border-radius:5px;overflow:hidden;
+}
+.site-result-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0.55rem 0.85rem;cursor:pointer;transition:background 0.15s;
+}
+.site-result-head:hover{background:rgba(255,255,255,0.02);}
+.site-result-body{
+  border-top:1px solid var(--border);padding:0.75rem 0.85rem;
+  display:grid;grid-template-columns:1fr 1fr;gap:0.3rem 1rem;
+}
+.check-row{display:flex;align-items:center;gap:0.5rem;font-size:0.68rem;padding:0.2rem 0;}
+.check-icon{font-size:0.75rem;flex-shrink:0;width:16px;text-align:center;}
+.check-name{color:var(--text-dim);flex:1;}
+.check-val{color:var(--text);}
+.check-val.ok{color:var(--green);}
+.check-val.warn{color:var(--yellow);}
+.check-val.crit{color:var(--red);}
+.spin{display:inline-block;animation:spin 0.7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+
+<style>
+@keyframes modalIn{from{opacity:0;transform:translateY(-20px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.form-label{display:block;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:0.35rem;}
+.form-input{
+  width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;
+  padding:0.5rem 0.65rem;color:var(--text-bright);font-family:var(--font-mono);font-size:0.75rem;
+  transition:border-color 0.15s;
+}
+.form-input:focus{outline:none;border-color:var(--green);}
+.form-input.invalid{border-color:var(--red);}
+.form-err{font-size:0.62rem;color:var(--red);margin-top:0.25rem;min-height:1em;}
+</style>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ── DATA ──────────────────────────────────────────────────────────────────
+
+const allDevices = [
+  // HQ
+  {id:1, name:'core-sw-01',      type:'Switch',       ip:'10.0.0.1',   loc:'HQ',              cpu:42,mem:61,uptime:'127d 4h', status:'ok',  latency:2},
+  {id:2, name:'fw-edge-01',      type:'Firewall',     ip:'10.0.0.2',   loc:'HQ',              cpu:68,mem:74,uptime:'127d 4h', status:'ok',  latency:1},
+  {id:3, name:'router-wan-01',   type:'Router',       ip:'10.0.0.3',   loc:'HQ',              cpu:55,mem:60,uptime:'127d 4h', status:'ok',  latency:3},
+  {id:4, name:'ap-floor2-01',    type:'Access Point', ip:'10.1.2.1',   loc:'HQ',              cpu:22,mem:38,uptime:'45d 2h',  status:'ok',  latency:5},
+  {id:9, name:'srv-app-01',      type:'Server',       ip:'10.0.10.1',  loc:'HQ',              cpu:78,mem:83,uptime:'60d 0h',  status:'warn',latency:4},
+  {id:10,name:'srv-db-01',       type:'Server',       ip:'10.0.10.2',  loc:'HQ',              cpu:51,mem:76,uptime:'60d 0h',  status:'ok',  latency:3},
+  {id:11,name:'vpn-agg-01',      type:'Router',       ip:'10.0.0.10',  loc:'HQ',              cpu:38,mem:50,uptime:'127d 4h', status:'ok',  latency:6},
+  {id:19,name:'sw-server-rack',  type:'Switch',       ip:'10.0.0.20',  loc:'HQ',              cpu:18,mem:32,uptime:'127d 4h', status:'ok',  latency:1},
+  // Kampala Branch
+  {id:5, name:'branch-kla-gw',   type:'Router',       ip:'10.10.1.1',  loc:'Kampala Branch',  cpu:71,mem:82,uptime:'22d 1h',  status:'warn',latency:48},
+  {id:6, name:'branch-kla-sw',   type:'Switch',       ip:'10.10.1.2',  loc:'Kampala Branch',  cpu:30,mem:41,uptime:'22d 1h',  status:'ok',  latency:52},
+  {id:20,name:'kla-ap-01',       type:'Access Point', ip:'10.10.1.10', loc:'Kampala Branch',  cpu:19,mem:28,uptime:'22d 1h',  status:'ok',  latency:55},
+  {id:21,name:'kla-srv-file',    type:'Server',       ip:'10.10.1.20', loc:'Kampala Branch',  cpu:44,mem:66,uptime:'10d 3h',  status:'ok',  latency:50},
+  // Mbarara Branch
+  {id:7, name:'branch-mba-gw',   type:'Router',       ip:'10.20.1.1',  loc:'Mbarara Branch',  cpu:90,mem:88,uptime:'3d 6h',   status:'crit',latency:182},
+  {id:22,name:'branch-mba-sw',   type:'Switch',       ip:'10.20.1.2',  loc:'Mbarara Branch',  cpu:35,mem:44,uptime:'3d 6h',   status:'warn',latency:190},
+  {id:23,name:'mba-ap-01',       type:'Access Point', ip:'10.20.1.10', loc:'Mbarara Branch',  cpu:12,mem:24,uptime:'3d 6h',   status:'ok',  latency:195},
+  // Jinja Branch
+  {id:8, name:'branch-jja-gw',   type:'Router',       ip:'10.30.1.1',  loc:'Jinja Branch',    cpu:44,mem:55,uptime:'18d 9h',  status:'ok',  latency:34},
+  {id:24,name:'branch-jja-sw',   type:'Switch',       ip:'10.30.1.2',  loc:'Jinja Branch',    cpu:28,mem:36,uptime:'18d 9h',  status:'ok',  latency:36},
+  {id:25,name:'jja-ap-01',       type:'Access Point', ip:'10.30.1.10', loc:'Jinja Branch',    cpu:15,mem:22,uptime:'18d 9h',  status:'ok',  latency:38},
+  // Entebbe Office
+  {id:26,name:'entebbe-gw-01',   type:'Router',       ip:'10.40.1.1',  loc:'Entebbe Office',  cpu:29,mem:42,uptime:'55d 2h',  status:'ok',  latency:19},
+  {id:27,name:'entebbe-sw-01',   type:'Switch',       ip:'10.40.1.2',  loc:'Entebbe Office',  cpu:18,mem:30,uptime:'55d 2h',  status:'ok',  latency:21},
+  {id:28,name:'entebbe-ap-01',   type:'Access Point', ip:'10.40.1.10', loc:'Entebbe Office',  cpu:11,mem:20,uptime:'55d 2h',  status:'ok',  latency:20},
+  // Gulu Branch
+  {id:29,name:'gulu-gw-01',      type:'Router',       ip:'10.50.1.1',  loc:'Gulu Branch',     cpu:52,mem:60,uptime:'9d 14h',  status:'ok',  latency:88},
+  {id:30,name:'gulu-sw-01',      type:'Switch',       ip:'10.50.1.2',  loc:'Gulu Branch',     cpu:22,mem:35,uptime:'9d 14h',  status:'ok',  latency:91},
+  {id:31,name:'gulu-ap-01',      type:'Access Point', ip:'10.50.1.10', loc:'Gulu Branch',     cpu:14,mem:22,uptime:'9d 14h',  status:'ok',  latency:93},
+];
+
+// keep devices as alias – will be repopulated on site change
+let devices = allDevices.filter(d=>d.loc==='HQ');
+
+const allAlerts = [
+  {id:'ALT-001',time:'2 min ago',  device:'branch-mba-gw', loc:'Mbarara Branch', type:'Performance',  msg:'CPU utilization at 90% for 15+ minutes. Risk of service degradation.',     sev:'critical', status:'active'},
+  {id:'ALT-002',time:'8 min ago',  device:'branch-mba-gw', loc:'Mbarara Branch', type:'Connectivity', msg:'Latency exceeds 150ms threshold (current: 182ms). Link quality degraded.',  sev:'high',     status:'active'},
+  {id:'ALT-003',time:'22 min ago', device:'srv-app-01',     loc:'HQ',             type:'Performance',  msg:'Memory usage at 83%. Approaching 90% critical threshold.',                  sev:'high',     status:'acknowledged'},
+  {id:'ALT-004',time:'34 min ago', device:'branch-kla-gw',  loc:'Kampala Branch', type:'Performance',  msg:'Interface GE0/1 utilization at 84%. Monitor for saturation.',              sev:'medium',   status:'active'},
+  {id:'ALT-005',time:'1h 10m ago', device:'branch-kla-gw',  loc:'Kampala Branch', type:'Connectivity', msg:'VPN tunnel flap detected. Tunnel re-established in 8 seconds.',            sev:'medium',   status:'acknowledged'},
+  {id:'ALT-006',time:'2h 45m ago', device:'ap-floor2-01',   loc:'HQ',             type:'Performance',  msg:'Client association count high (38/40). Consider adding AP.',               sev:'medium',   status:'active'},
+  {id:'ALT-007',time:'4h ago',     device:'core-sw-01',     loc:'HQ',             type:'Hardware',     msg:'Fan speed anomaly detected on PSU-2. Within operating range.',              sev:'low',      status:'active'},
+  {id:'ALT-008',time:'6h ago',     device:'branch-mba-sw',  loc:'Mbarara Branch', type:'Connectivity', msg:'Switch uplink CRC errors detected. Interface GE0/0 showing packet loss.',  sev:'high',     status:'active'},
+  {id:'ALT-009',time:'12h ago',    device:'gulu-gw-01',     loc:'Gulu Branch',    type:'Performance',  msg:'Latency spike to 220ms for 3 minutes. Resolved automatically.',             sev:'medium',   status:'resolved'},
+  {id:'ALT-010',time:'1d ago',     device:'entebbe-gw-01',  loc:'Entebbe Office', type:'Hardware',     msg:'Power supply voltage variance within tolerance range.',                     sev:'low',      status:'resolved'},
+];
+
+let alerts = allAlerts.filter(a=>a.loc==='HQ');
+
+// ── SITE CHANGE ──────────────────────────────────────────────────────────
+function currentSite(){ return document.getElementById('site-selector').value; }
+
+function onSiteChange(){
+  const loc = currentSite();
+  devices = allDevices.filter(d => d.loc === loc);
+  alerts  = allAlerts.filter(a => a.loc === loc);
+  updateHeaderStats();
+  renderDashboard();
+  renderDevices(devices);
+  renderConsoleDevices(devices);
+  renderAlerts();
+  updateAlertFilterCounts();
+  if(document.getElementById('view-reports').classList.contains('active')) renderReports();
+  if(selectedDevice && selectedDevice.loc !== loc){ selectedDevice=null; document.getElementById('console-target').textContent='— Select a device —'; }
+  if(document.getElementById('view-topology').classList.contains('active')){
+    topoNodes=[];topoLinks=[];selectedNodeId=null;selectedLinkId=null;connectFromId=null;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{ drawDesigner(); }));
+  }
+}
+
+function updateHeaderStats(){
+  const loc=currentSite();
+  const locDevices=allDevices.filter(d=>d.loc===loc);
+  const locAlerts=allAlerts.filter(a=>a.loc===loc&&a.status==='active');
+  document.getElementById('h-online').textContent = locDevices.filter(d=>d.status==='ok').length;
+  document.getElementById('h-warn').textContent   = locDevices.filter(d=>d.status==='warn').length;
+  document.getElementById('h-crit').textContent   = locDevices.filter(d=>d.status==='crit').length;
+  document.getElementById('h-alerts').textContent = locAlerts.length;
+}
+
+// ── SITE BANDWIDTH CONFIG ─────────────────────────────────────────────────
+const SITE_BW={
+  'HQ':            [{label:'Core Switch',   cap:'10 Gbps',base:3200,unit:'Mbps'},{label:'ISP Uplink',   cap:'1 Gbps', base:840, unit:'Mbps'},{label:'VPN Aggregator',cap:'1 Gbps', base:210, unit:'Mbps'}],
+  'Kampala Branch':[{label:'MPLS Primary',  cap:'100 Mbps',base:68,  unit:'Mbps'},{label:'4G Backup',   cap:'20 Mbps',base:5,   unit:'Mbps'},{label:'LAN Core',      cap:'1 Gbps', base:120, unit:'Mbps'}],
+  'Mbarara Branch':[{label:'SD-WAN Link 1', cap:'50 Mbps', base:44,  unit:'Mbps'},{label:'SD-WAN Link 2',cap:'50 Mbps',base:38,  unit:'Mbps'},{label:'LAN Core',      cap:'100 Mbps',base:60, unit:'Mbps'}],
+  'Jinja Branch':  [{label:'MPLS Link',     cap:'100 Mbps',base:34,  unit:'Mbps'},{label:'LAN Core',    cap:'1 Gbps', base:200, unit:'Mbps'},{label:'VPN Tunnel',    cap:'50 Mbps', base:18,  unit:'Mbps'}],
+  'Entebbe Office':[{label:'Fiber Uplink',  cap:'200 Mbps',base:55,  unit:'Mbps'},{label:'LAN Core',    cap:'1 Gbps', base:180, unit:'Mbps'},{label:'VPN Tunnel',    cap:'100 Mbps',base:22,  unit:'Mbps'}],
+  'Gulu Branch':   [{label:'4G Primary',    cap:'30 Mbps', base:18,  unit:'Mbps'},{label:'Starlink',    cap:'100 Mbps',base:72, unit:'Mbps'},{label:'LAN Core',      cap:'100 Mbps',base:40,  unit:'Mbps'}],
+};
+
+function calcHealth(){
+  if(!devices.length) return 100;
+  const ok=devices.filter(d=>d.status==='ok').length;
+  const warn=devices.filter(d=>d.status==='warn').length;
+  return Math.round(((ok*100)+(warn*60))/devices.length);
+}
+
+function renderDashboard(){
+  const loc=currentSite();
+  const activeAlerts=alerts.filter(a=>a.status==='active');
+  const score=calcHealth();
+
+  // Health card
+  const hEl=document.getElementById('dash-health');
+  if(hEl){hEl.textContent=score+'%';hEl.className='stat-value '+(score>=90?'ok':score>=70?'warn':'crit');}
+  const hSub=document.getElementById('dash-health-sub');
+  if(hSub) hSub.textContent=score>=90?'All systems nominal':score>=70?'Degraded — monitor':'⚠ Issues detected';
+
+  // Avg latency
+  const avgLat=devices.length?Math.round(devices.reduce((s,d)=>s+d.latency,0)/devices.length):0;
+  const lEl=document.getElementById('dash-latency');
+  if(lEl){lEl.textContent=avgLat+'ms';lEl.className='stat-value '+(avgLat>100?'crit':avgLat>50?'warn':'');}
+  const lSub=document.getElementById('dash-latency-sub');
+  if(lSub) lSub.textContent=avgLat>100?'⚠ Critical threshold':avgLat>50?'⚠ Elevated':'Within normal range';
+
+  // Throughput
+  const bwCfg=SITE_BW[loc]||SITE_BW['Kampala Branch'];
+  const totalMbps=bwCfg.reduce((s,b)=>s+b.base,0);
+  const tEl=document.getElementById('dash-throughput');
+  if(tEl) tEl.textContent=totalMbps>1000?(totalMbps/1000).toFixed(1)+' Gbps':totalMbps+' Mbps';
+  const tSub=document.getElementById('dash-throughput-sub');
+  if(tSub) tSub.textContent='Across '+devices.length+' devices';
+
+  // Alert count card
+  const aEl=document.getElementById('dash-alert-count');
+  if(aEl){aEl.textContent=activeAlerts.length;aEl.className='stat-value '+(activeAlerts.some(a=>a.sev==='critical')?'crit':activeAlerts.length?'warn':'ok');}
+  const aSub=document.getElementById('dash-alert-sub');
+  if(aSub) aSub.textContent=activeAlerts.length?activeAlerts.length+' require attention':'All clear ✓';
+
+  // Alert badge in panel
+  const badge=document.getElementById('dash-alert-badge');
+  if(badge) badge.textContent=activeAlerts.length+' active';
+
+  // Bandwidth sparklines
+  bwCfg.forEach((cfg,i)=>{
+    const lbl=document.getElementById('spark-label-'+(i+1));
+    const val=document.getElementById('spark-val-'+(i+1));
+    const current=Math.round(cfg.base*(0.88+Math.random()*0.24));
+    const capMbps=parseInt(cfg.cap)*( cfg.cap.includes('Gbps')?1000:1);
+    const pct=Math.min(99,Math.round((current/capMbps)*100));
+    if(lbl) lbl.textContent=loc+' — '+cfg.label;
+    if(val){val.textContent=current+' '+cfg.unit+' / '+cfg.cap;val.style.color=pct>85?'var(--red)':pct>65?'var(--yellow)':'var(--green)';}
+    sparkline('spark-'+(i+1),pct>85?'red':pct>65?'yellow':'green',100);
+  });
+
+  // BW section title
+  const bwTitle=document.getElementById('bw-section-title');
+  if(bwTitle) bwTitle.textContent=loc+' — Bandwidth Utilization (Last 24h)';
+
+  renderDashAlerts();
+  renderTopDevices();
+  renderMiniTopo();
+}
+
+// ── DASHBOARD ALERTS ─────────────────────────────────────────────────────
+function renderDashAlerts(){
+  const el=document.getElementById('dash-alerts');
+  if(!el) return;
+  const siteAlerts=alerts.slice(0,4);
+  el.innerHTML=siteAlerts.length?siteAlerts.map(a=>`
+    <div class="alert-item">
+      <div class="alert-sev ${a.sev}"></div>
+      <div>
+        <div class="alert-msg"><span class="alert-badge badge-${a.sev}">${a.sev}</span>${a.device}</div>
+        <div class="alert-meta">${a.msg.slice(0,70)}...</div>
+        <div class="alert-meta">${a.time}</div>
+      </div>
+    </div>`).join('')
+  :`<div style="text-align:center;padding:1.5rem;font-size:0.72rem;color:var(--green);">✓ No active alerts for ${currentSite()}</div>`;
+}
+
+
+function tick(){
+  const now=new Date();
+  document.getElementById('clock').textContent=now.toUTCString().slice(17,25)+' UTC';
+}
+tick();setInterval(tick,1000);
+
+// ── VIEW SWITCH ──────────────────────────────────────────────────────────
+function showView(id,btn){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('view-'+id).classList.add('active');
+  if(btn)btn.classList.add('active');
+  if(id==='topology'){
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      buildPalette();
+      drawDesigner();
+    }));
+  }
+  if(id==='reports') renderReports();
+}
+
+// ── SPARKLINES ───────────────────────────────────────────────────────────
+function sparkline(id,color,max){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.innerHTML='';
+  const vals=Array.from({length:24},()=>Math.floor(Math.random()*max));
+  const peak=Math.max(...vals);
+  vals.forEach(v=>{
+    const pct=Math.round((v/peak)*100);
+    let cls=color;
+    if(pct>85)cls='red';else if(pct>65)cls='yellow';
+    const b=document.createElement('div');
+    b.className=`spark-bar ${cls}`;b.style.height=pct+'%';
+    el.appendChild(b);
+  });
+}
+// Sparklines refreshed periodically
+setInterval(()=>{
+  sparkline('spark-1','green',100);
+  sparkline('spark-2','yellow',100);
+  sparkline('spark-3','blue',100);
+},5000);
+
+// ── TOP DEVICES ──────────────────────────────────────────────────────────
+function renderTopDevices(){
+  const sorted=[...devices].sort((a,b)=>b.latency-a.latency).slice(0,5);
+  document.getElementById('top-devices').innerHTML=sorted.map(d=>`
+    <tr>
+      <td><span class="status-dot ${d.status}"></span>${d.name}</td>
+      <td style="color:var(--text-dim);">${d.ip}</td>
+      <td>${d.loc}</td>
+      <td style="color:${d.latency>100?'var(--red)':d.latency>50?'var(--yellow)':'var(--green)'}">${d.latency}ms</td>
+      <td>${(Math.random()*0.5).toFixed(2)}%</td>
+      <td><span class="badge-${d.status==='ok'?'ok':d.status==='crit'?'crit':'medium'} alert-badge">${d.status}</span></td>
+    </tr>`).join('');
+}
+
+function renderMiniTopo(){
+  const map=document.getElementById('topo-mini');
+  const svg=document.getElementById('topo-svg');
+  const devs=devices.slice(0,8); // show up to 8 devices
+  const count=devs.length;
+  // Layout: first device at center-top, rest around
+  const positions=devs.map((d,i)=>{
+    if(i===0) return {x:50,y:20};
+    const angle=((i-1)/(Math.max(count-1,1)))*300-150;
+    const rad=angle*Math.PI/180;
+    return {x:50+38*Math.sin(rad), y:55+28*Math.cos(rad)};
+  });
+
+  const hub=positions[0];
+  svg.innerHTML=positions.slice(1).map((p,i)=>{
+    const d=devs[i+1];
+    return `<line x1="${hub.x}%" y1="${hub.y}%" x2="${p.x}%" y2="${p.y}%"
+      stroke="${d.status==='crit'?'rgba(255,71,87,0.4)':d.status==='warn'?'rgba(245,197,24,0.3)':'rgba(0,208,132,0.2)'}"
+      stroke-width="1.5" stroke-dasharray="${d.status==='crit'?'4,3':'none'}"/>`;
+  }).join('');
+
+  map.querySelectorAll('.topo-node').forEach(e=>e.remove());
+  devs.forEach((d,i)=>{
+    const p=positions[i];
+    const icon=TYPE_ICON[d.type]||'📦';
+    const div=document.createElement('div');
+    div.className=`topo-node ${d.status}`;
+    div.style.left=`calc(${p.x}% - 18px)`;div.style.top=`calc(${p.y}% - 18px)`;
+    div.innerHTML=`<div class="topo-node-icon">${icon}</div><div class="topo-node-label">${d.name.split('-').pop()}</div>`;
+    map.appendChild(div);
+  });
+}
+
+// ── DEVICES VIEW ─────────────────────────────────────────────────────────
+function renderDevices(list){
+  const el=document.getElementById('dev-count-label');
+  if(el) el.textContent=`${currentSite()} Devices (${list.length})`;
+  document.getElementById('devices-tbody').innerHTML=list.map(d=>`
+    <tr>
+      <td><span class="status-dot ${d.status}"></span>${d.status.toUpperCase()}</td>
+      <td style="color:var(--text-bright);font-weight:500;">${d.name}</td>
+      <td><span class="tag">${d.type}</span></td>
+      <td style="color:var(--text-dim);">${d.ip}</td>
+      <td>${d.loc}</td>
+      <td>
+        <div class="bw-bar-wrap">
+          <div class="bw-bar"><div class="bw-fill ${d.cpu>85?'crit':d.cpu>70?'warn':'ok'}" style="width:${d.cpu}%"></div></div>
+          <span class="bw-pct">${d.cpu}%</span>
+        </div>
+      </td>
+      <td>
+        <div class="bw-bar-wrap">
+          <div class="bw-bar"><div class="bw-fill ${d.mem>85?'crit':d.mem>70?'warn':'ok'}" style="width:${d.mem}%"></div></div>
+          <span class="bw-pct">${d.mem}%</span>
+        </div>
+      </td>
+      <td style="color:var(--text-dim);">${d.uptime}</td>
+      <td><button class="btn btn-ghost" style="padding:0.2rem 0.6rem;font-size:0.62rem;" onclick="selectConsoleDevice(${d.id})">Diagnose</button></td>
+    </tr>`).join('');
+}
+
+function filterDevices(){
+  const q=document.getElementById('dev-search').value.toLowerCase();
+  renderDevices(devices.filter(d=>d.name.includes(q)||d.ip.includes(q)||d.loc.toLowerCase().includes(q)));
+}
+
+// ── ALERTS VIEW ──────────────────────────────────────────────────────────
+let alertFilter='all';
+function renderAlerts(){
+  const list=alertFilter==='all'?alerts:alerts.filter(a=>a.sev===alertFilter);
+  const empty=`<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:1.5rem;font-size:0.72rem;">No alerts for ${currentSite()}</td></tr>`;
+  document.getElementById('alerts-tbody').innerHTML=list.length?list.map(a=>`
+    <tr>
+      <td><span class="alert-badge badge-${a.sev}">${a.sev.toUpperCase()}</span></td>
+      <td style="color:var(--text-dim);white-space:nowrap;">${a.time}</td>
+      <td style="color:var(--text-bright);">${a.device}</td>
+      <td><span class="tag">${a.type}</span></td>
+      <td style="max-width:300px;color:var(--text);">${a.msg}</td>
+      <td><span class="badge-${a.status==='active'?'crit':a.status==='acknowledged'?'medium':'ok'} alert-badge">${a.status}</span></td>
+      <td><button class="btn btn-ghost" style="padding:0.2rem 0.6rem;font-size:0.62rem;" onclick="ackAlert('${a.id}',this)">ACK</button></td>
+    </tr>`).join(''):empty;
+}
+
+function ackAlert(id,btn){
+  const a=allAlerts.find(x=>x.id===id);
+  if(a&&a.status==='active'){a.status='acknowledged';renderAlerts();updateHeaderStats();}
+  btn.disabled=true;btn.textContent='✓';
+}
+
+function filterAlerts(f,btn){
+  alertFilter=f;
+  document.querySelectorAll('.alert-filters .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAlerts();
+}
+
+// ── CONSOLE ──────────────────────────────────────────────────────────────
+let selectedDevice=null;
+
+function renderConsoleDevices(list){
+  document.getElementById('console-device-list').innerHTML=list.map(d=>`
+    <div class="device-list-item ${selectedDevice&&selectedDevice.id===d.id?'selected':''}" onclick="selectConsoleDevice(${d.id})">
+      <div class="dli-name"><span class="status-dot ${d.status}"></span>${d.name}</div>
+      <div class="dli-ip">${d.ip} · ${d.type}</div>
+    </div>`).join('');
+}
+
+function filterConsoleDevices(){
+  const q=document.getElementById('con-search').value.toLowerCase();
+  renderConsoleDevices(devices.filter(d=>d.name.includes(q)||d.ip.includes(q)));
+}
+
+function selectConsoleDevice(id){
+  selectedDevice=devices.find(d=>d.id===id);
+  if(!selectedDevice)return;
+  document.getElementById('console-target').textContent=`${selectedDevice.name} (${selectedDevice.ip})`;
+  renderConsoleDevices(devices);
+  const consoleBtn=document.querySelector('.nav-btn:nth-child(5)');
+  showView('console',consoleBtn);
+  appendTerm('prompt',`netwatch$ `,`connect ${selectedDevice.ip}`);
+  setTimeout(()=>appendTerm('out','','Connection established via SSH/SNMP.','ok'),400);
+}
+
+function appendTerm(type,prompt,text,cls){
+  const term=document.getElementById('terminal');
+  const cursor=term.querySelector('.term-cursor');
+  if(cursor)cursor.remove();
+  const line=document.createElement('div');
+  line.className='term-line';
+  if(type==='prompt')line.innerHTML=`<span class="term-prompt">${prompt}</span><span class="term-cmd">${text}</span>`;
+  else line.innerHTML=`<span class="term-out ${cls?'term-'+cls:''}">${text}</span>`;
+  term.appendChild(line);
+  const cur=document.createElement('div');cur.className='term-line';
+  cur.innerHTML=`<span class="term-cursor"></span>`;
+  term.appendChild(cur);
+  term.scrollTop=term.scrollHeight;
+}
+
+function clearTerminal(){
+  document.getElementById('terminal').innerHTML=`<div class="term-line"><span class="term-prompt">netwatch$</span><span class="term-cmd"> Terminal cleared.</span></div><div class="term-line"><span class="term-cursor"></span></div>`;
+}
+
+const toolOutputs={
+  ping:(d)=>[
+    {t:300,cls:'',text:`PING ${d.ip} (${d.ip}) 56 bytes of data`},
+    {t:600,cls:'ok',text:`64 bytes from ${d.ip}: icmp_seq=1 ttl=64 time=${d.latency}.2 ms`},
+    {t:900,cls:'ok',text:`64 bytes from ${d.ip}: icmp_seq=2 ttl=64 time=${d.latency+1}.0 ms`},
+    {t:1200,cls:'ok',text:`64 bytes from ${d.ip}: icmp_seq=3 ttl=64 time=${d.latency-1}.8 ms`},
+    {t:1500,cls:d.status==='crit'?'warn':'ok',text:`--- ${d.ip} ping statistics ---  3/3 received, ${d.status==='crit'?'2.1':'0.0'}% packet loss`},
+  ],
+  traceroute:(d)=>[
+    {t:200,cls:'',text:`traceroute to ${d.ip}, 30 hops max`},
+    {t:600,cls:'ok',text:` 1  10.0.0.1  2.1 ms  1.8 ms  1.9 ms   [core-sw-01]`},
+    {t:1000,cls:'ok',text:` 2  10.0.0.2  3.4 ms  3.1 ms  3.3 ms   [fw-edge-01]`},
+    {t:1400,cls:d.status==='crit'?'warn':'ok',text:` 3  ${d.ip}  ${d.latency}.2 ms  ${d.latency+2}.1 ms  ${d.latency-1}.8 ms   [${d.name}]`},
+    {t:1600,cls:'ok',text:`Traceroute complete. ${d.status==='crit'?'High latency detected on final hop.':'Path looks healthy.'}`},
+  ],
+  snmp:(d)=>[
+    {t:300,cls:'',text:`SNMP GET v2c → ${d.ip}:161`},
+    {t:600,cls:'ok',text:`sysDescr.0 = ${d.type} — Running IOS 15.2`},
+    {t:800,cls:'ok',text:`sysUpTime.0 = ${d.uptime}`},
+    {t:1000,cls:d.cpu>80?'warn':'ok',text:`hrProcessorLoad.1 = ${d.cpu}%`},
+    {t:1200,cls:d.mem>85?'warn':'ok',text:`memUsedPercent.0 = ${d.mem}%`},
+    {t:1400,cls:'ok',text:`ifNumber.0 = 24 interfaces`},
+  ],
+  interfaces:(d)=>[
+    {t:200,cls:'',text:`Interface status for ${d.name}`},
+    {t:400,cls:'ok',text:`GE0/0  UP    1000 Mbps  In: 241 Mbps  Out: 183 Mbps  Errors: 0`},
+    {t:600,cls:'ok',text:`GE0/1  UP    1000 Mbps  In: 112 Mbps  Out: 89 Mbps   Errors: 0`},
+    {t:800,cls:d.status==='crit'?'warn':'ok',text:`GE0/2  UP    100 Mbps   In: ${d.status==='crit'?'96':'42'} Mbps   Out: 38 Mbps   ${d.status==='crit'?'CRC Errors: 48':'Errors: 0'}`},
+    {t:1000,cls:'',text:`GE0/3  DOWN  [admin shutdown]`},
+    {t:1200,cls:'ok',text:`Done. ${d.status==='crit'?'⚠ CRC errors on GE0/2 — check cable/SFP.':'All active interfaces nominal.'}`},
+  ],
+  performance:(d)=>[
+    {t:300,cls:'',text:`Performance assessment: ${d.name}`},
+    {t:600,cls:d.cpu>80?'warn':'ok',text:`CPU:    ${d.cpu}% ${d.cpu>80?'⚠ HIGH':'✓ OK'}`},
+    {t:800,cls:d.mem>85?'warn':'ok',text:`Memory: ${d.mem}% ${d.mem>85?'⚠ HIGH':'✓ OK'}`},
+    {t:1000,cls:d.latency>100?'err':'ok',text:`Latency:${d.latency}ms ${d.latency>100?'✗ CRITICAL':d.latency>50?'⚠ ELEVATED':'✓ OK'}`},
+    {t:1200,cls:'ok',text:`Temperature: 41°C ✓ OK`},
+    {t:1400,cls:d.status==='crit'?'err':d.status==='warn'?'warn':'ok',text:`Overall assessment: ${d.status==='crit'?'CRITICAL — Immediate action required':d.status==='warn'?'DEGRADED — Monitor closely':'HEALTHY'}`},
+  ],
+  config:(d)=>[
+    {t:300,cls:'',text:`Fetching running config hash for ${d.name}...`},
+    {t:600,cls:'ok',text:`Config hash: SHA256:a3f8c2d19e...`},
+    {t:800,cls:'ok',text:`Comparing against last backup (2h ago)...`},
+    {t:1200,cls:d.status==='crit'?'warn':'ok',text:d.status==='crit'?`⚠ CHANGE DETECTED: ip route 0.0.0.0/0 modified 3h ago`:`✓ No configuration drift detected.`},
+    {t:1400,cls:'ok',text:`Compliance check: PASSED (14/14 policy rules)`},
+  ],
+  rca:(d)=>[
+    {t:200,cls:'',text:`[AI] Initiating root cause analysis for ${d.name}...`},
+    {t:600,cls:'',text:`[AI] Correlating alerts, metrics, config history, and topology...`},
+    {t:1200,cls:'ok',text:`[AI] Root Cause Hypothesis (confidence: ${d.status==='crit'?'87':'62'}%)`},
+    {t:1400,cls:d.status==='crit'?'warn':'ok',text:d.status==='crit'?`[AI] ► High CPU likely caused by BGP route churn from upstream ISP`:`[AI] ► Minor latency increase correlates with scheduled backup window`},
+    {t:1700,cls:'',text:`[AI] Suggested remediation:`},
+    {t:1900,cls:'ok',text:d.status==='crit'?`[AI]  1. Apply CPU throttle: "no ip bgp dampening"\n         2. Contact ISP for BGP peer instability\n         3. Consider route summarisation`:`[AI]  1. Schedule backups during off-peak hours (02:00–04:00 UTC)`},
+  ],
+};
+
+function runTool(tool){
+  if(!selectedDevice){appendTerm('out','','⚠ Please select a device first.','warn');return;}
+  appendTerm('prompt','netwatch$ ',`run ${tool} --target ${selectedDevice.ip}`);
+  const steps=toolOutputs[tool](selectedDevice);
+  steps.forEach(s=>setTimeout(()=>appendTerm('out','',s.text,s.cls),s.t));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TOPOLOGY DESIGNER ENGINE
+// ══════════════════════════════════════════════════════════════════════════
+
+const TYPE_ICON={'Router':'🔀','Switch':'🔲','Firewall':'🛡','Server':'🖥','Access Point':'📶','IoT Sensor':'📡','Cloud':'☁','Hub':'⬡','default':'📦'};
+const PALETTE_TYPES=['Router','Switch','Firewall','Server','Access Point','Cloud','IoT Sensor','Hub'];
+const LINK_COLORS={ethernet:'#00d084',fiber:'#38b2ff',vpn:'#f5c518',wireless:'#b09de8',wan:'#ff8c42'};
+const STATUS_COLOR={ok:'#00d084',warn:'#f5c518',crit:'#ff4757',offline:'#4a6070'};
+
+let topoMode='geo';
+let topoTool='select';
+let topoNodes=[];
+let topoLinks=[];
+let selectedNodeId=null;
+let selectedLinkId=null;
+let draggingNodeId=null;
+let dragOffsetX=0,dragOffsetY=0;
+let connectFromId=null;
+let mouseX=0,mouseY=0;
+let topoAnimFrame=null;
+let currentNodePos=null;
+
+function buildPalette(){
+  const el=document.getElementById('device-palette');
+  if(!el) return;
+  el.innerHTML=PALETTE_TYPES.map(t=>`
+    <div class="palette-btn" onclick="addNodeOfType('${t}')" title="Add ${t}">
+      ${TYPE_ICON[t]||'📦'} ${t}
+    </div>`).join('');
+}
+
+function addNodeOfType(type){
+  const canvas=document.getElementById('topo-canvas');
+  const W=canvas.width||800, H=canvas.height||500;
+  const id='n'+Date.now();
+  topoNodes.push({id,label:type.toLowerCase().replace(' ','-')+'-'+(topoNodes.length+1).toString().padStart(2,'0'),
+    type,ip:'10.0.0.'+(topoNodes.length+10),status:'ok',cpu:Math.floor(20+Math.random()*40),latency:Math.floor(5+Math.random()*30),
+    x:80+Math.random()*(W-160),y:60+Math.random()*(H-120)});
+  selectedNodeId=id;selectedLinkId=null;
+  drawDesigner();renderProps();updateTopoStats();
+}
+
+function setTopoTool(tool){
+  topoTool=tool;connectFromId=null;
+  ['select','addnode','connect','delete'].forEach(t=>{
+    const b=document.getElementById('tb-'+t);if(b)b.classList.toggle('active',t===tool);
+  });
+  const hints={select:'Drag to move nodes · Click to select and edit properties',addnode:'Click canvas to place a node, or use the palette',connect:'Click source node then target node to draw a link',delete:'Click any node or link to remove it'};
+  const h=document.getElementById('topo-hint');if(h)h.textContent=hints[tool]||'';
+  const c=document.getElementById('topo-canvas');
+  if(c)c.style.cursor=tool==='connect'?'crosshair':tool==='delete'?'not-allowed':'default';
+}
+
+function setTopoMode(mode){
+  topoMode=mode;
+  const g=document.getElementById('topo-btn-geo'),l=document.getElementById('topo-btn-logical');
+  if(g)g.classList.toggle('active',mode==='geo');
+  if(l)l.classList.toggle('active',mode==='logical');
+  drawDesigner();
+}
+
+function importTopoFromDevices(){
+  topoNodes=[];topoLinks=[];selectedNodeId=null;selectedLinkId=null;connectFromId=null;
+  const canvas=document.getElementById('topo-canvas');
+  const W=canvas.width||800,H=canvas.height||500;
+  const count=devices.length;
+  const sorted=[...devices].sort((a,b)=>{const p={Firewall:0,Router:1,Switch:2,Server:3,'Access Point':4};return (p[a.type]??5)-(p[b.type]??5);});
+  sorted.forEach((d,i)=>{
+    const angle=i===0?-Math.PI/2:((i-1)/Math.max(count-1,1))*2*Math.PI-Math.PI/2;
+    const r=i===0?0:Math.min(W,H)*0.34;
+    topoNodes.push({id:'n'+d.id,label:d.name,type:d.type,ip:d.ip,status:d.status,cpu:d.cpu,latency:d.latency,
+      x:W/2+r*Math.cos(angle),y:H/2+r*Math.sin(angle)});
+  });
+  const routers=topoNodes.filter(n=>n.type==='Router'||n.type==='Firewall');
+  const switches=topoNodes.filter(n=>n.type==='Switch');
+  const endpoints=topoNodes.filter(n=>n.type==='Server'||n.type==='Access Point'||n.type==='IoT Sensor');
+  routers.forEach(r=>{
+    switches.forEach(s=>topoLinks.push({id:'l'+Date.now()+Math.random(),from:r.id,to:s.id,linkType:'ethernet',speed:'1 Gbps'}));
+    if(!switches.length)endpoints.forEach(e=>topoLinks.push({id:'l'+Date.now()+Math.random(),from:r.id,to:e.id,linkType:'ethernet',speed:'100 Mbps'}));
+  });
+  switches.forEach(s=>endpoints.forEach(e=>topoLinks.push({id:'l'+Date.now()+Math.random(),from:s.id,to:e.id,linkType:'ethernet',speed:'1 Gbps'})));
+  drawDesigner();renderProps();updateTopoStats();
+}
+
+function autoLayoutTopo(){
+  const canvas=document.getElementById('topo-canvas');
+  const W=canvas.width||800,H=canvas.height||500;
+  if(!topoNodes.length)return;
+  const connCount={};
+  topoNodes.forEach(n=>connCount[n.id]=0);
+  topoLinks.forEach(l=>{connCount[l.from]=(connCount[l.from]||0)+1;connCount[l.to]=(connCount[l.to]||0)+1;});
+  const sorted=[...topoNodes].sort((a,b)=>(connCount[b.id]||0)-(connCount[a.id]||0));
+  sorted[0].x=W/2;sorted[0].y=H*0.18;
+  const rest=sorted.slice(1);
+  rest.forEach((n,i)=>{
+    const cols=Math.ceil(Math.sqrt(rest.length));
+    n.x=W*(0.12+(i%cols/(Math.max(cols-1,1)))*0.76);
+    n.y=H*(0.42+(Math.floor(i/cols)/Math.max(Math.ceil(rest.length/cols)-1,1))*0.46);
+  });
+  drawDesigner();
+}
+
+function clearTopoDesign(){
+  if(topoNodes.length&&!confirm('Clear the topology canvas?'))return;
+  topoNodes=[];topoLinks=[];selectedNodeId=null;selectedLinkId=null;connectFromId=null;
+  drawDesigner();renderProps();updateTopoStats();
+}
+
+function exportTopoJSON(){
+  const data={site:currentSite(),generated:new Date().toISOString(),nodes:topoNodes,links:topoLinks};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`topology-${currentSite().replace(/\s+/g,'-').toLowerCase()}-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function updateTopoStats(){
+  const el=document.getElementById('topo-stats');
+  if(el)el.textContent=`${topoNodes.length} node${topoNodes.length!==1?'s':''} · ${topoLinks.length} link${topoLinks.length!==1?'s':''}`;
+}
+
+const NODE_R=24;
+function hitNode(mx,my){return topoNodes.find(n=>Math.hypot(mx-n.x,my-n.y)<NODE_R+4)||null;}
+function hitLink(mx,my){
+  for(const l of topoLinks){
+    const a=topoNodes.find(n=>n.id===l.from),b=topoNodes.find(n=>n.id===l.to);
+    if(!a||!b)continue;
+    const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
+    if(len<1)continue;
+    const t=Math.max(0,Math.min(1,((mx-a.x)*dx+(my-a.y)*dy)/(len*len)));
+    if(Math.hypot(mx-(a.x+t*dx),my-(a.y+t*dy))<9)return l;
+  }
+  return null;
+}
+
+function drawDesigner(){
+  const canvas=document.getElementById('topo-canvas');
+  if(!canvas)return;
+  const rect=canvas.getBoundingClientRect();
+  const W=Math.floor(rect.width)||800,H=Math.floor(rect.height)||500;
+  if(canvas.width!==W||canvas.height!==H){canvas.width=W;canvas.height=H;}
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  // Grid dots
+  ctx.fillStyle='rgba(30,45,61,0.45)';
+  for(let x=20;x<W;x+=40)for(let y=20;y<H;y+=40){ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill();}
+
+  // Watermark
+  ctx.font='bold 12px IBM Plex Mono,monospace';ctx.fillStyle='rgba(0,208,132,0.05)';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(currentSite().toUpperCase()+' · TOPOLOGY DESIGNER',W/2,H-16);
+
+  // Links
+  topoLinks.forEach(l=>{
+    const a=topoNodes.find(n=>n.id===l.from),b=topoNodes.find(n=>n.id===l.to);
+    if(!a||!b)return;
+    const isSel=selectedLinkId===l.id;
+    const color=LINK_COLORS[l.linkType]||LINK_COLORS.ethernet;
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+    ctx.strokeStyle=isSel?'#ffffff':color;
+    ctx.lineWidth=isSel?3:l.linkType==='fiber'?2.5:1.8;
+    if(l.linkType==='vpn'||l.linkType==='wireless')ctx.setLineDash([8,5]);else ctx.setLineDash([]);
+    ctx.globalAlpha=isSel?1:0.72;ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+    // Speed label
+    const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    if(l.speed||l.linkType){
+      const txt=(l.speed?l.speed+' ':'')+l.linkType;
+      ctx.font='9px IBM Plex Mono,monospace';
+      const tw=ctx.measureText(txt).width;
+      ctx.fillStyle='rgba(8,11,16,0.85)';ctx.fillRect(mx-tw/2-3,my-7,tw+6,13);
+      ctx.fillStyle=isSel?'#fff':color;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,mx,my);
+    }
+    // Arrow
+    const ang=Math.atan2(b.y-a.y,b.x-a.x);
+    const tip={x:b.x-Math.cos(ang)*NODE_R,y:b.y-Math.sin(ang)*NODE_R};
+    ctx.beginPath();ctx.moveTo(tip.x,tip.y);
+    ctx.lineTo(tip.x-11*Math.cos(ang-0.38),tip.y-11*Math.sin(ang-0.38));
+    ctx.lineTo(tip.x-11*Math.cos(ang+0.38),tip.y-11*Math.sin(ang+0.38));
+    ctx.closePath();ctx.fillStyle=color;ctx.globalAlpha=0.8;ctx.fill();ctx.globalAlpha=1;
+  });
+
+  // In-progress link
+  if(connectFromId){
+    const a=topoNodes.find(n=>n.id===connectFromId);
+    if(a){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(mouseX,mouseY);
+      ctx.strokeStyle='rgba(255,255,255,0.4)';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);}
+  }
+
+  // Nodes
+  topoNodes.forEach(n=>{
+    const color=STATUS_COLOR[n.status]||'#4a6070';
+    const isSel=selectedNodeId===n.id;
+    const isDrag=draggingNodeId===n.id;
+    const R=isSel||isDrag?NODE_R+3:NODE_R;
+    const grd=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,R*2.5);
+    grd.addColorStop(0,color+(isSel?'55':'22'));grd.addColorStop(1,'transparent');
+    ctx.fillStyle=grd;ctx.beginPath();ctx.arc(n.x,n.y,R*2.5,0,Math.PI*2);ctx.fill();
+    if(isSel){ctx.beginPath();ctx.arc(n.x,n.y,R+6,0,Math.PI*2);ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);ctx.stroke();ctx.setLineDash([]);}
+    if(n.status==='crit'){ctx.beginPath();ctx.arc(n.x,n.y,R+5+Math.sin(Date.now()/350)*4,0,Math.PI*2);ctx.strokeStyle='rgba(255,71,87,0.3)';ctx.lineWidth=1.5;ctx.stroke();}
+    ctx.beginPath();ctx.arc(n.x,n.y,R,0,Math.PI*2);ctx.fillStyle='#141c26';ctx.fill();
+    ctx.strokeStyle=color;ctx.lineWidth=isSel?2.5:2;ctx.stroke();
+    ctx.font=`${R-5}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(TYPE_ICON[n.type]||'📦',n.x,n.y);
+    ctx.font=`${isSel?'bold ':''}10px IBM Plex Mono,monospace`;ctx.fillStyle=isSel?'#fff':'#c8d8ee';ctx.textBaseline='top';ctx.fillText(n.label,n.x,n.y+R+4);
+    ctx.font='9px IBM Plex Mono,monospace';ctx.fillStyle='#4a6070';ctx.fillText(n.ip,n.x,n.y+R+16);
+    ctx.beginPath();ctx.arc(n.x+R-4,n.y-R+4,4,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+  });
+
+  if(topoNodes.some(n=>n.status==='crit')||connectFromId){
+    if(topoAnimFrame)cancelAnimationFrame(topoAnimFrame);
+    topoAnimFrame=requestAnimationFrame(drawDesigner);
+  }
+  updateTopoStats();
+}
+
+function renderProps(){
+  const panel=document.getElementById('topo-props');
+  if(!panel)return;
+  const node=topoNodes.find(n=>n.id===selectedNodeId);
+  const link=topoLinks.find(l=>l.id===selectedLinkId);
+  if(node){
+    panel.innerHTML=`
+      <div class="topo-prop-row"><div class="topo-prop-label">Label</div>
+        <input class="topo-prop-input" value="${node.label}" onchange="updateNodeProp('${node.id}','label',this.value)"></div>
+      <div class="topo-prop-row"><div class="topo-prop-label">Type</div>
+        <select class="topo-prop-input" onchange="updateNodeProp('${node.id}','type',this.value)">
+          ${PALETTE_TYPES.map(t=>`<option${t===node.type?' selected':''}>${t}</option>`).join('')}
+        </select></div>
+      <div class="topo-prop-row"><div class="topo-prop-label">IP Address</div>
+        <input class="topo-prop-input" value="${node.ip}" onchange="updateNodeProp('${node.id}','ip',this.value)"></div>
+      <div class="topo-prop-row"><div class="topo-prop-label">Status</div>
+        <select class="topo-prop-input" onchange="updateNodeProp('${node.id}','status',this.value)">
+          <option${node.status==='ok'?' selected':''}>ok</option>
+          <option${node.status==='warn'?' selected':''}>warn</option>
+          <option${node.status==='crit'?' selected':''}>crit</option>
+          <option${node.status==='offline'?' selected':''}>offline</option>
+        </select></div>
+      <div class="topo-prop-row"><div class="topo-prop-label">CPU %</div>
+        <input class="topo-prop-input" type="number" min="0" max="100" value="${node.cpu}" onchange="updateNodeProp('${node.id}','cpu',+this.value)"></div>
+      <div class="topo-prop-row"><div class="topo-prop-label">Latency (ms)</div>
+        <input class="topo-prop-input" type="number" min="0" value="${node.latency}" onchange="updateNodeProp('${node.id}','latency',+this.value)"></div>
+      <div style="margin-top:0.75rem;display:flex;gap:0.4rem;">
+        <button class="btn btn-ghost" style="font-size:0.62rem;flex:1;" onclick="deleteSelected()">🗑 Delete</button>
+        <button class="btn btn-ghost" style="font-size:0.62rem;flex:1;" onclick="setTopoTool('connect')">⟵ Link</button>
+      </div>`;
+  }else if(link){
+    const fn=topoNodes.find(n=>n.id===link.from),tn=topoNodes.find(n=>n.id===link.to);
+    panel.innerHTML=`
+      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:0.75rem;">${fn?.label||'?'} → ${tn?.label||'?'}</div>
+      <div class="topo-prop-row"><div class="topo-prop-label">Link Type</div>
+        <select class="topo-prop-input" onchange="updateLinkProp('${link.id}','linkType',this.value)">
+          ${Object.keys(LINK_COLORS).map(t=>`<option${t===link.linkType?' selected':''}>${t}</option>`).join('')}
+        </select></div>
+      <div class="topo-prop-row"><div class="topo-prop-label">Speed</div>
+        <input class="topo-prop-input" value="${link.speed||''}" placeholder="e.g. 1 Gbps" onchange="updateLinkProp('${link.id}','speed',this.value)"></div>
+      <div style="margin-top:0.75rem;">
+        <button class="btn btn-ghost" style="font-size:0.62rem;width:100%;" onclick="deleteSelected()">🗑 Delete Link</button>
+      </div>`;
+  }else{
+    panel.innerHTML='<div style="font-size:0.68rem;color:var(--text-dim);text-align:center;margin-top:2rem;line-height:2;">Select a node or link<br>to edit its properties</div>';
+  }
+}
+
+function updateNodeProp(id,key,val){const n=topoNodes.find(n=>n.id===id);if(n){n[key]=val;drawDesigner();}}
+function updateLinkProp(id,key,val){const l=topoLinks.find(l=>l.id===id);if(l){l[key]=val;drawDesigner();}}
+function deleteSelected(){
+  if(selectedNodeId){topoLinks=topoLinks.filter(l=>l.from!==selectedNodeId&&l.to!==selectedNodeId);topoNodes=topoNodes.filter(n=>n.id!==selectedNodeId);selectedNodeId=null;}
+  else if(selectedLinkId){topoLinks=topoLinks.filter(l=>l.id!==selectedLinkId);selectedLinkId=null;}
+  drawDesigner();renderProps();updateTopoStats();
+}
+
+function initTopoEvents(){
+  const canvas=document.getElementById('topo-canvas');
+  if(!canvas)return;
+  function getXY(e){const r=canvas.getBoundingClientRect(),s=e.touches?e.touches[0]:e;return{x:s.clientX-r.left,y:s.clientY-r.top};}
+
+  canvas.addEventListener('mousedown',e=>{
+    const {x,y}=getXY(e);mouseX=x;mouseY=y;
+    const hn=hitNode(x,y),hl=hitLink(x,y);
+    if(topoTool==='select'){
+      if(hn){selectedNodeId=hn.id;selectedLinkId=null;draggingNodeId=hn.id;dragOffsetX=x-hn.x;dragOffsetY=y-hn.y;}
+      else if(hl){selectedLinkId=hl.id;selectedNodeId=null;}
+      else{selectedNodeId=null;selectedLinkId=null;}
+      drawDesigner();renderProps();
+    }else if(topoTool==='addnode'){
+      if(!hn){const id='n'+Date.now();topoNodes.push({id,label:'node-'+(topoNodes.length+1).toString().padStart(2,'0'),type:'Router',ip:'10.0.0.'+(topoNodes.length+10),status:'ok',cpu:30,latency:10,x,y});selectedNodeId=id;selectedLinkId=null;drawDesigner();renderProps();updateTopoStats();}
+    }else if(topoTool==='connect'){
+      if(hn){
+        if(!connectFromId){connectFromId=hn.id;}
+        else if(connectFromId!==hn.id){
+          const lt=document.getElementById('link-type-sel')?.value||'ethernet';
+          const spd={ethernet:'1 Gbps',fiber:'10 Gbps',vpn:'100 Mbps',wireless:'300 Mbps',wan:'100 Mbps'};
+          topoLinks.push({id:'l'+Date.now(),from:connectFromId,to:hn.id,linkType:lt,speed:spd[lt]||'1 Gbps'});
+          connectFromId=null;drawDesigner();updateTopoStats();
+        }else{connectFromId=null;}
+      }else{connectFromId=null;}
+      drawDesigner();
+    }else if(topoTool==='delete'){
+      if(hn){topoLinks=topoLinks.filter(l=>l.from!==hn.id&&l.to!==hn.id);topoNodes=topoNodes.filter(n=>n.id!==hn.id);if(selectedNodeId===hn.id)selectedNodeId=null;}
+      else if(hl){topoLinks=topoLinks.filter(l=>l.id!==hl.id);if(selectedLinkId===hl.id)selectedLinkId=null;}
+      drawDesigner();renderProps();updateTopoStats();
+    }
+  });
+  canvas.addEventListener('mousemove',e=>{
+    const {x,y}=getXY(e);mouseX=x;mouseY=y;
+    if(draggingNodeId&&topoTool==='select'){const n=topoNodes.find(n=>n.id===draggingNodeId);if(n){n.x=x-dragOffsetX;n.y=y-dragOffsetY;}drawDesigner();}
+    else if(connectFromId){drawDesigner();}
+    else{const hn=hitNode(x,y),hl=hitLink(x,y);canvas.style.cursor=hn||hl?'pointer':topoTool==='connect'?'crosshair':topoTool==='delete'?'not-allowed':'default';}
+  });
+  canvas.addEventListener('mouseup',()=>{draggingNodeId=null;});
+  canvas.addEventListener('mouseleave',()=>{draggingNodeId=null;});
+  document.addEventListener('keydown',e=>{
+    if(!document.getElementById('view-topology').classList.contains('active'))return;
+    if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+    if(e.key==='v'||e.key==='V')setTopoTool('select');
+    if(e.key==='a'||e.key==='A')setTopoTool('addnode');
+    if(e.key==='l'||e.key==='L')setTopoTool('connect');
+    if(e.key==='Delete'||e.key==='Backspace')deleteSelected();
+    if(e.key==='Escape'){connectFromId=null;setTopoTool('select');drawDesigner();}
+  });
+}
+
+window.addEventListener('resize',()=>{
+  if(document.getElementById('view-topology').classList.contains('active')){
+    drawDesigner();
+  }
+});
+
+
+// ── REPORTS CHART ────────────────────────────────────────────────────────
+function renderBwChart(){
+  const chart=document.getElementById('bw-chart');
+  const labels=document.getElementById('bw-labels');
+  const days=Array.from({length:30},(_,i)=>{
+    const d=new Date();d.setDate(d.getDate()-29+i);
+    return {label:d.getDate(),val:Math.floor(1200+Math.random()*1800)};
+  });
+  const peak=Math.max(...days.map(d=>d.val));
+  chart.innerHTML=days.map(d=>{
+    const pct=Math.round((d.val/peak)*100);
+    const cls=pct>85?'rgba(255,71,87,0.7)':pct>65?'rgba(245,197,24,0.6)':'rgba(0,208,132,0.7)';
+    return `<div class="chart-bar" style="height:${pct}%;background:${cls}" title="${d.val} Mbps"></div>`;
+  }).join('');
+  labels.innerHTML=days.filter((_,i)=>i%5===0).map(d=>`<div class="chart-label" style="flex:5">${d.label}</div>`).join('');
+}
+renderBwChart();
+
+// Init topology designer
+initTopoEvents();
+buildPalette();
+
+// Bootstrap: render everything for default site (HQ)
+onSiteChange();
+
+// ── REPORT BUTTONS ───────────────────────────────────────────────────────
+// (getReportData defined below with full site-awareness)
+
+// ── Export CSV ──
+function exportReportCSV(){
+  const d=getReportData();
+  const rows=[
+    ['NETWATCH NETWORK REPORT — '+d.site],['Generated',d.generated],['Period',d.period],[],
+    ['=== SLA COMPLIANCE ==='],['Metric','Value'],
+    ['Overall SLA',d.sla.overall],['Target',d.sla.target],
+    ['Online Devices',d.devices.online+' / '+d.devices.total],[],
+    ['=== MTTR ==='],['Metric','Value'],
+    ['Overall MTTR',d.mttr.overall],['Target',d.mttr.target],
+    ['Critical',d.mttr.critical],['High',d.mttr.high],['Medium',d.mttr.medium],[],
+    ['=== ALERT VOLUME ==='],['Metric','Value'],
+    ['Total Alerts',d.alerts.total],['Auto-Resolved',d.alerts.autoResolved],
+    ['Escalated',d.alerts.escalated],['Manual Resolve',d.alerts.manual],['vs Prior Month',d.alerts.change],[],
+    ['=== DEVICE INVENTORY ==='],['Device','Type','Status','CPU%','Memory%','Latency','Uptime'],
+    ...devices.map(dev=>[dev.name,dev.type,dev.status,dev.cpu+'%',dev.mem+'%',dev.latency+'ms',dev.uptime]),[],
+    ['=== ACTIVE ALERTS ==='],['ID','Device','Severity','Type','Message','Status'],
+    ...d.topAlerts.map(a=>[a.id,a.device,a.sev,a.type,a.msg,a.status]),
+  ];
+  const csv=rows.map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`netwatch-${currentSite().replace(/\s+/g,'-').toLowerCase()}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ── Export PDF (preview modal then print) ──
+function exportReportPDF(){
+  const d=getReportData();
+  document.getElementById('pdf-content').innerHTML=buildPDFHTML(d);
+  document.getElementById('pdf-overlay').style.display='flex';
+}
+
+function buildPDFHTML(d){
+  const siteRows=d.sites.map(s=>`
+    <tr>
+      <td>${s.name}</td>
+      <td style="color:${s.score>85?'#16a34a':s.score>60?'#ca8a04':'#dc2626'};font-weight:600;">${s.score}/100</td>
+      <td>${s.latency}</td><td>${s.uptime}</td>
+      <td style="color:#6b7280;">${s.type}</td>
+    </tr>`).join('');
+  const alertRows=d.topAlerts.map(a=>`
+    <tr>
+      <td style="color:${a.sev==='critical'?'#dc2626':a.sev==='high'?'#ea580c':a.sev==='medium'?'#ca8a04':'#2563eb'};font-weight:600;text-transform:uppercase;font-size:10px;">${a.sev}</td>
+      <td style="font-weight:600;">${a.device}</td><td>${a.type}</td>
+      <td style="font-size:11px;color:#6b7280;">${a.msg.slice(0,60)}${a.msg.length>60?'…':''}</td>
+      <td style="text-transform:capitalize;">${a.status}</td>
+    </tr>`).join('');
+  return `
+  <style>
+    *{box-sizing:border-box;}
+    body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;font-size:12px;line-height:1.5;margin:0;}
+    h1{font-size:22px;color:#0f172a;margin:0 0 4px;}
+    h2{font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin:22px 0 8px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;}
+    .meta{font-size:11px;color:#94a3b8;}
+    .kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;}
+    .kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;text-align:center;}
+    .kpi-val{font-size:20px;font-weight:700;line-height:1;}
+    .kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin-top:3px;}
+    .ok{color:#16a34a;} .warn{color:#ca8a04;} .crit{color:#dc2626;} .blue{color:#2563eb;}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px;}
+    th{background:#f1f5f9;padding:5px 9px;text-align:left;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0;}
+    td{padding:5px 9px;border-bottom:1px solid #f1f5f9;}
+    tr:last-child td{border:none;}
+    .footer{margin-top:20px;font-size:10px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px;}
+  </style>
+  <div style="padding:4px 0 16px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;">
+      <div><h1>🖥 NetWatch — ${d.site||"Site"} Report</h1><div class="meta">Period: ${d.period} · Generated: ${d.generated}</div></div>
+      <div style="text-align:right;font-size:11px;color:#94a3b8;">Confidential<br>Internal Use Only</div>
+    </div>
+    <h2>Executive Summary</h2>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-val ok">${d.sla.overall}</div><div class="kpi-label">Overall SLA</div></div>
+      <div class="kpi"><div class="kpi-val warn">${d.mttr.overall}</div><div class="kpi-label">Avg MTTR</div></div>
+      <div class="kpi"><div class="kpi-val blue">${d.alerts.total}</div><div class="kpi-label">Total Alerts</div></div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-val ok">${d.devices.online}</div><div class="kpi-label">Devices Online</div></div>
+      <div class="kpi"><div class="kpi-val warn">${d.devices.degraded}</div><div class="kpi-label">Degraded</div></div>
+      <div class="kpi"><div class="kpi-val crit">${d.devices.critical}</div><div class="kpi-label">Critical</div></div>
+    </div>
+    <h2>SLA Compliance</h2>
+    <table><tr><th>Segment</th><th>Uptime</th><th>vs Target (${d.sla.target})</th></tr>
+      <tr><td>HQ Data Center</td><td class="ok" style="font-weight:600;">${d.sla.hq}</td><td class="ok">✓ Above target</td></tr>
+      <tr><td>Branch Sites</td><td class="ok" style="font-weight:600;">${d.sla.branch}</td><td class="ok">✓ Above target</td></tr>
+      <tr><td>Remote Workers</td><td class="warn" style="font-weight:600;">${d.sla.remote}</td><td class="warn">↓ Below target</td></tr>
+    </table>
+    <h2>MTTR Breakdown</h2>
+    <table><tr><th>Severity</th><th>Avg Resolution Time</th><th>Target</th></tr>
+      <tr><td>Critical</td><td class="ok" style="font-weight:600;">${d.mttr.critical}</td><td>&lt;15m</td></tr>
+      <tr><td>High</td><td class="ok" style="font-weight:600;">${d.mttr.high}</td><td>&lt;30m</td></tr>
+      <tr><td>Medium</td><td class="warn" style="font-weight:600;">${d.mttr.medium}</td><td>&lt;60m</td></tr>
+    </table>
+    <h2>Alert Volume</h2>
+    <table><tr><th>Metric</th><th>Count</th><th>Note</th></tr>
+      <tr><td>Total Alerts</td><td style="font-weight:600;">${d.alerts.total}</td><td>${d.alerts.change}</td></tr>
+      <tr><td>Auto-Resolved</td><td class="ok" style="font-weight:600;">${d.alerts.autoResolved}</td><td class="ok">75%</td></tr>
+      <tr><td>Escalated</td><td class="warn" style="font-weight:600;">${d.alerts.escalated}</td><td class="warn">10%</td></tr>
+      <tr><td>Manual Resolve</td><td style="font-weight:600;">${d.alerts.manual}</td><td>15%</td></tr>
+    </table>
+    <h2>Remote Site Health</h2>
+    <table><tr><th>Site</th><th>Health Score</th><th>Latency</th><th>Uptime</th><th>Connection</th></tr>${siteRows}</table>
+    <h2>Active Alerts (Top 5)</h2>
+    <table><tr><th>Severity</th><th>Device</th><th>Type</th><th>Message</th><th>Status</th></tr>${alertRows}</table>
+    <div class="footer">NetWatch v2.4.1 · Auto-generated report · ${d.generated}</div>
+  </div>`;
+}
+
+function downloadPDF(){
+  const content=document.getElementById('pdf-content').innerHTML;
+  const win=window.open('','_blank','width=820,height=960');
+  win.document.write(`<!DOCTYPE html><html><head><title>NetWatch Report</title></head><body>${content}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(()=>{win.print();},450);
+}
+
+// ── Schedule Report ──
+function openScheduleModal(){
+  document.getElementById('schedule-overlay').style.display='flex';
+  document.getElementById('sched-form-wrap').style.display='flex';
+  document.getElementById('sched-footer').style.display='flex';
+  document.getElementById('sched-success').style.display='none';
+}
+
+function closeScheduleModal(){
+  document.getElementById('schedule-overlay').style.display='none';
+}
+
+function saveSchedule(){
+  const name   =document.getElementById('sched-name').value.trim()||'Unnamed Report';
+  const freq   =document.getElementById('sched-freq').value;
+  const day    =document.getElementById('sched-day').value;
+  const emails =document.getElementById('sched-emails').value.trim();
+  const formats=[...document.querySelectorAll('#sched-formats input:checked')].map(el=>el.value).join(', ')||'PDF';
+
+  if(emails&&!/\S+@\S+\.\S+/.test(emails.split(',')[0].trim())){
+    document.getElementById('sched-emails').classList.add('invalid');
+    document.getElementById('sched-emails').focus();
+    return;
+  }
+  document.getElementById('sched-emails').classList.remove('invalid');
+
+  // Append to existing list
+  const row=document.createElement('div');
+  row.className='sched-existing-row';
+  row.innerHTML=`
+    <div>
+      <div style="font-size:0.72rem;color:var(--text-bright);">${name}</div>
+      <div style="font-size:0.62rem;color:var(--text-dim);">${freq} · ${day} · ${formats.toUpperCase()}${emails?' · '+emails.split(',')[0].trim():''}</div>
+    </div>
+    <button class="btn btn-ghost" style="font-size:0.6rem;padding:0.15rem 0.5rem;color:var(--red);border-color:rgba(255,71,87,0.3);" onclick="this.closest('.sched-existing-row').remove()">Remove</button>`;
+  document.getElementById('sched-existing').appendChild(row);
+
+  document.getElementById('sched-form-wrap').style.display='none';
+  document.getElementById('sched-footer').style.display='none';
+  document.getElementById('sched-success').style.display='block';
+  document.getElementById('sched-success-msg').textContent=`"${name}" scheduled!`;
+  document.getElementById('sched-success-sub').textContent=`Runs ${freq.toLowerCase()} · ${day} · ${formats.toUpperCase()}${emails?' · '+emails.split(',')[0].trim():''}`;
+  setTimeout(closeScheduleModal,2400);
+}
+
+document.getElementById('pdf-overlay').addEventListener('click',function(e){if(e.target===this)this.style.display='none';});
+document.getElementById('schedule-overlay').addEventListener('click',function(e){if(e.target===this)closeScheduleModal();});
+
+
+
+// Diagnostic result generators per check type
+const bulkChecks={
+  ping:    (s)=>s.score>85?{icon:'✓',val:'OK — 0% loss',cls:'ok'}:s.score>60?{icon:'⚠',val:`${(Math.random()*3+0.5).toFixed(1)}% loss`,cls:'warn'}:{icon:'✗',val:'High loss / unreachable',cls:'crit'},
+  latency: (s)=>{const ms=parseFloat(s.latency);return ms<50?{icon:'✓',val:`${ms}ms avg`,cls:'ok'}:ms<150?{icon:'⚠',val:`${ms}ms — elevated`,cls:'warn'}:{icon:'✗',val:`${ms}ms — critical`,cls:'crit'}},
+  vpn:     (s)=>s.primary==='ok'?{icon:'✓',val:'Tunnel UP · stable',cls:'ok'}:s.primary==='warn'?{icon:'⚠',val:'Tunnel degraded / flapping',cls:'warn'}:{icon:'✗',val:'Tunnel DOWN',cls:'crit'},
+  bandwidth:(s)=>{const u=Math.floor(30+Math.random()*60);return u<70?{icon:'✓',val:`${u}% utilisation`,cls:'ok'}:u<90?{icon:'⚠',val:`${u}% — near saturation`,cls:'warn'}:{icon:'✗',val:`${u}% — saturated`,cls:'crit'}},
+  cpu:     (s)=>{const c=Math.floor(20+Math.random()*70);return c<70?{icon:'✓',val:`${c}% avg`,cls:'ok'}:c<85?{icon:'⚠',val:`${c}% — high`,cls:'warn'}:{icon:'✗',val:`${c}% — critical`,cls:'crit'}},
+  interfaces:(s)=>s.score>80?{icon:'✓',val:'All interfaces UP',cls:'ok'}:s.score>60?{icon:'⚠',val:'1 interface degraded',cls:'warn'}:{icon:'✗',val:'2+ interfaces DOWN',cls:'crit'},
+  config:  (s)=>Math.random()>0.25?{icon:'✓',val:'Compliant (14/14)',cls:'ok'}:{icon:'⚠',val:'1 drift detected',cls:'warn'},
+  routing: (s)=>Math.random()>0.15?{icon:'✓',val:'BGP/OSPF stable',cls:'ok'}:{icon:'⚠',val:'Route flap detected',cls:'warn'},
+};
+
+const checkLabels={ping:'ICMP Ping',latency:'Latency & Jitter',vpn:'VPN Tunnel',bandwidth:'Bandwidth',cpu:'CPU / Memory',interfaces:'Interfaces',config:'Config Compliance',routing:'Routing Table'};
+
+let bulkRunning=false;
+
+function openBulkDiag(){
+  document.getElementById('bulk-overlay').style.display='flex';
+  document.getElementById('bulk-config').style.display='block';
+  document.getElementById('bulk-results').style.display='none';
+  document.getElementById('bulk-overall-badge').style.display='none';
+
+  // Render site selection pills
+  const pillsEl=document.getElementById('bulk-site-pills');
+  pillsEl.innerHTML=sites.map((s,i)=>`
+    <span style="font-size:0.62rem;padding:0.15rem 0.5rem;border-radius:3px;
+      background:${s.score>85?'var(--green-dim)':s.score>60?'var(--yellow-dim)':'var(--red-dim)'};
+      color:${s.score>85?'var(--green)':s.score>60?'var(--yellow)':'var(--red)'};
+      border:1px solid ${s.score>85?'rgba(0,208,132,0.25)':s.score>60?'rgba(245,197,24,0.25)':'rgba(255,71,87,0.25)'}">
+      ${s.name}
+    </span>`).join('');
+}
+
+function closeBulkDiag(){
+  if(bulkRunning)return; // don't close mid-run
+  document.getElementById('bulk-overlay').style.display='none';
+}
+
+function startBulkDiag(){
+  // Get selected checks
+  const checked=[...document.querySelectorAll('#bulk-check-list input:checked')].map(el=>el.value);
+  if(!checked.length){alert('Select at least one diagnostic check.');return;}
+
+  bulkRunning=true;
+  document.getElementById('bulk-config').style.display='none';
+  document.getElementById('bulk-results').style.display='block';
+  document.getElementById('bulk-export-btn').style.display='none';
+  document.getElementById('bulk-rerun-btn').style.display='none';
+  document.getElementById('bulk-overall-badge').style.display='none';
+  document.getElementById('bulk-site-results').innerHTML='';
+  document.getElementById('bulk-summary-text').textContent='';
+  document.getElementById('bulk-progress-bar').style.width='0%';
+  document.getElementById('bulk-progress-bar').style.background='var(--green)';
+  document.getElementById('bulk-progress-pct').textContent='0%';
+  document.getElementById('bulk-progress-label').textContent='Connecting to sites...';
+
+  // Build empty cards for all sites
+  const resultsEl=document.getElementById('bulk-site-results');
+  sites.forEach((s,si)=>{
+    const card=document.createElement('div');
+    card.className='site-result-card';
+    card.id=`brc-${si}`;
+    card.innerHTML=`
+      <div class="site-result-head" onclick="toggleBulkCard(${si})">
+        <div style="display:flex;align-items:center;gap:0.65rem;">
+          <span class="spin" id="brc-spin-${si}" style="color:var(--text-dim);font-size:0.8rem;">⟳</span>
+          <span style="font-size:0.8rem;font-weight:600;color:var(--text-bright);">${s.name}</span>
+          <span style="font-size:0.62rem;color:var(--text-dim);">${s.type}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+          <span id="brc-status-${si}" style="font-size:0.65rem;color:var(--text-dim);">Queued...</span>
+          <span style="font-size:0.65rem;color:var(--text-dim);">▾</span>
+        </div>
+      </div>
+      <div class="site-result-body" id="brc-body-${si}" style="display:none;">
+        ${checked.map(c=>`
+          <div class="check-row" id="brc-${si}-${c}">
+            <span class="check-icon spin" style="color:var(--text-dim);">⟳</span>
+            <span class="check-name">${checkLabels[c]}</span>
+            <span class="check-val">—</span>
+          </div>`).join('')}
+      </div>`;
+    resultsEl.appendChild(card);
+  });
+
+  // Sequentially run each site with staggered timing
+  const totalSteps=sites.length*checked.length;
+  let completedSteps=0;
+
+  sites.forEach((site,si)=>{
+    const siteDelay=si*700; // stagger sites
+
+    setTimeout(()=>{
+      // Show body, mark as running
+      document.getElementById(`brc-body-${si}`).style.display='grid';
+      document.getElementById(`brc-status-${si}`).textContent='Running...';
+
+      checked.forEach((check,ci)=>{
+        const checkDelay=ci*350;
+        setTimeout(()=>{
+          const result=bulkChecks[check](site);
+          const rowEl=document.getElementById(`brc-${si}-${check}`);
+          if(rowEl){
+            rowEl.innerHTML=`
+              <span class="check-icon">${result.icon}</span>
+              <span class="check-name">${checkLabels[check]}</span>
+              <span class="check-val ${result.cls}">${result.val}</span>`;
+          }
+          completedSteps++;
+          const pct=Math.round((completedSteps/totalSteps)*100);
+          document.getElementById('bulk-progress-bar').style.width=pct+'%';
+          document.getElementById('bulk-progress-pct').textContent=pct+'%';
+          document.getElementById('bulk-progress-label').textContent=`Scanning ${site.name} — ${checkLabels[check]}...`;
+
+          // Last check for this site
+          if(ci===checked.length-1){
+            // Derive site-level result
+            const bodyEl=document.getElementById(`brc-body-${si}`);
+            const hasCrit=bodyEl.querySelector('.check-val.crit');
+            const hasWarn=bodyEl.querySelector('.check-val.warn');
+            const spinEl=document.getElementById(`brc-spin-${si}`);
+            const statusEl=document.getElementById(`brc-status-${si}`);
+
+            if(hasCrit){
+              spinEl.outerHTML=`<span style="color:var(--red);font-size:0.8rem;">✗</span>`;
+              statusEl.innerHTML=`<span style="color:var(--red);font-weight:600;">CRITICAL</span>`;
+            } else if(hasWarn){
+              spinEl.outerHTML=`<span style="color:var(--yellow);font-size:0.8rem;">⚠</span>`;
+              statusEl.innerHTML=`<span style="color:var(--yellow);font-weight:600;">DEGRADED</span>`;
+            } else {
+              spinEl.outerHTML=`<span style="color:var(--green);font-size:0.8rem;">✓</span>`;
+              statusEl.innerHTML=`<span style="color:var(--green);font-weight:600;">HEALTHY</span>`;
+            }
+          }
+
+          // All done
+          if(completedSteps===totalSteps){
+            bulkRunning=false;
+            finishBulkDiag();
+          }
+        }, checkDelay);
+      });
+    }, siteDelay);
+  });
+}
+
+function finishBulkDiag(){
+  document.getElementById('bulk-progress-label').textContent='Diagnostics complete.';
+  document.getElementById('bulk-progress-pct').textContent='100%';
+  document.getElementById('bulk-progress-bar').style.width='100%';
+
+  // Tally results
+  const crits=document.querySelectorAll('#bulk-site-results .check-val.crit').length;
+  const warns=document.querySelectorAll('#bulk-site-results .check-val.warn').length;
+  const oks  =document.querySelectorAll('#bulk-site-results .check-val.ok').length;
+  const total=crits+warns+oks;
+
+  const badge=document.getElementById('bulk-overall-badge');
+  badge.style.display='inline-block';
+  if(crits>0){
+    badge.style.background='var(--red-dim)';badge.style.border='1px solid rgba(255,71,87,0.3)';
+    badge.style.color='var(--red)';badge.textContent=`${crits} Critical issue${crits>1?'s':''}`;
+  } else if(warns>0){
+    badge.style.background='var(--yellow-dim)';badge.style.border='1px solid rgba(245,197,24,0.3)';
+    badge.style.color='var(--yellow)';badge.textContent=`${warns} Warning${warns>1?'s':''}`;
+  } else {
+    badge.style.background='var(--green-dim)';badge.style.border='1px solid rgba(0,208,132,0.3)';
+    badge.style.color='var(--green)';badge.textContent='All sites healthy';
+  }
+
+  document.getElementById('bulk-summary-text').innerHTML=
+    `<span style="color:var(--green);">✓ ${oks} passed</span>&nbsp;&nbsp;`+
+    (warns?`<span style="color:var(--yellow);">⚠ ${warns} warnings</span>&nbsp;&nbsp;`:'')+
+    (crits?`<span style="color:var(--red);">✗ ${crits} critical</span>`:'')+
+    `&nbsp;&nbsp;<span style="color:var(--text-dim);">(${total} checks across ${sites.length} sites)</span>`;
+
+  document.getElementById('bulk-export-btn').style.display='inline-flex';
+  document.getElementById('bulk-rerun-btn').style.display='inline-flex';
+}
+
+function toggleBulkCard(si){
+  const body=document.getElementById(`brc-body-${si}`);
+  body.style.display=body.style.display==='none'?'grid':'none';
+}
+
+function exportBulkReport(){
+  const lines=['NETWATCH — Bulk Diagnostic Report','Generated: '+new Date().toUTCString(),'',''];
+  sites.forEach((s,si)=>{
+    lines.push(`[ ${s.name} ]`);
+    const rows=document.querySelectorAll(`#brc-body-${si} .check-row`);
+    rows.forEach(r=>{
+      const name=r.querySelector('.check-name')?.textContent||'';
+      const val =r.querySelector('.check-val')?.textContent||'';
+      lines.push(`  ${name.padEnd(22,' ')}${val}`);
+    });
+    lines.push('');
+  });
+  const blob=new Blob([lines.join('\n')],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='netwatch-bulk-report.txt';
+  a.click();
+}
+
+// Close on overlay click (only if not running)
+document.getElementById('bulk-overlay').addEventListener('click',function(e){
+  if(e.target===this&&!bulkRunning)closeBulkDiag();
+});
+
+
+function openAddDevice(){
+  const overlay=document.getElementById('modal-overlay');
+  overlay.style.display='flex';
+  // reset
+  ['f-name','f-ip','f-mac','f-site','f-tags'].forEach(id=>document.getElementById(id).value='');
+  ['f-type','f-loctype'].forEach(id=>document.getElementById(id).selectedIndex=0);
+  document.getElementById('f-proto').selectedIndex=0;
+  document.getElementById('f-poll').selectedIndex=1;
+  ['err-name','err-type','err-ip','err-loctype'].forEach(id=>document.getElementById(id).textContent='');
+  ['f-name','f-ip','f-type','f-loctype'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  document.getElementById('modal-form').style.display='grid';
+  document.getElementById('modal-footer').style.display='flex';
+  document.getElementById('modal-progress').style.display='none';
+  document.getElementById('modal-success').style.display='none';
+  document.getElementById('progress-bar').style.width='0%';
+  toggleSiteField();
+}
+
+function closeAddDevice(){
+  document.getElementById('modal-overlay').style.display='none';
+}
+
+function toggleSiteField(){
+  const v=document.getElementById('f-loctype').value;
+  document.getElementById('site-field').style.opacity=(v==='HQ'||v==='Cloud')?'0.4':'1';
+  document.getElementById('f-site').disabled=(v==='HQ'||v==='Cloud');
+  if(v==='HQ')document.getElementById('f-site').value='HQ Data Center';
+  else if(v==='Cloud')document.getElementById('f-site').value='Cloud';
+  else if(v==='')document.getElementById('f-site').value='';
+}
+
+function validateIP(ip){
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip)&&ip.split('.').every(n=>+n<=255);
+}
+
+function submitAddDevice(){
+  // Validate
+  let valid=true;
+  const name=document.getElementById('f-name').value.trim();
+  const type=document.getElementById('f-type').value;
+  const ip=document.getElementById('f-ip').value.trim();
+  const loctype=document.getElementById('f-loctype').value;
+
+  if(!name){document.getElementById('err-name').textContent='Hostname is required.';document.getElementById('f-name').classList.add('invalid');valid=false;}
+  else{document.getElementById('err-name').textContent='';document.getElementById('f-name').classList.remove('invalid');}
+
+  if(!type){document.getElementById('err-type').textContent='Select a device type.';document.getElementById('f-type').classList.add('invalid');valid=false;}
+  else{document.getElementById('err-type').textContent='';document.getElementById('f-type').classList.remove('invalid');}
+
+  if(!ip||!validateIP(ip)){document.getElementById('err-ip').textContent='Enter a valid IPv4 address.';document.getElementById('f-ip').classList.add('invalid');valid=false;}
+  else if(devices.find(d=>d.ip===ip)){document.getElementById('err-ip').textContent='This IP is already registered.';document.getElementById('f-ip').classList.add('invalid');valid=false;}
+  else{document.getElementById('err-ip').textContent='';document.getElementById('f-ip').classList.remove('invalid');}
+
+  if(!loctype){document.getElementById('err-loctype').textContent='Select a location type.';document.getElementById('f-loctype').classList.add('invalid');valid=false;}
+  else{document.getElementById('err-loctype').textContent='';document.getElementById('f-loctype').classList.remove('invalid');}
+
+  if(!valid)return;
+
+  // Show progress
+  document.getElementById('modal-form').style.display='none';
+  document.getElementById('modal-footer').style.display='none';
+  document.getElementById('modal-progress').style.display='block';
+
+  const steps=[
+    {pct:20,label:'Validating device credentials...'},
+    {pct:45,label:'Testing ICMP reachability...'},
+    {pct:65,label:'Polling SNMP data...'},
+    {pct:85,label:'Registering in inventory...'},
+    {pct:100,label:'Finalising configuration...'},
+  ];
+  let i=0;
+  const bar=document.getElementById('progress-bar');
+  const lbl=document.getElementById('progress-label');
+  const interval=setInterval(()=>{
+    if(i>=steps.length){clearInterval(interval);finishAddDevice(name,type,ip,loctype);return;}
+    bar.style.width=steps[i].pct+'%';
+    lbl.textContent=steps[i].label;
+    i++;
+  },500);
+}
+
+function finishAddDevice(name,type,ip,loctype){
+  const site=document.getElementById('f-site').value.trim()||loctype||currentSite();
+  const newDev={
+    id: allDevices.length + 100 + Math.floor(Math.random()*900),
+    name, type, ip,
+    loc: site,
+    cpu:     Math.floor(10+Math.random()*30),
+    mem:     Math.floor(20+Math.random()*40),
+    uptime:  '0d 0h',
+    status:  'ok',
+    latency: Math.floor(5+Math.random()*25),
+  };
+  // Push to master list AND re-scope
+  allDevices.push(newDev);
+  devices = allDevices.filter(d => d.loc === currentSite());
+
+  document.getElementById('modal-progress').style.display='none';
+  document.getElementById('modal-success').style.display='block';
+  document.getElementById('success-msg').textContent=`"${name}" added to ${site}!`;
+
+  renderDevices(devices);
+  renderConsoleDevices(devices);
+  updateHeaderStats();
+  renderDashboard();
+  updateAlertFilterCounts();
+  setTimeout(closeAddDevice, 2200);
+}
+
+function updateAlertFilterCounts(){
+  const loc=currentSite();
+  const locAlerts=allAlerts.filter(a=>a.loc===loc);
+  const counts={all:locAlerts.length, critical:0, high:0, medium:0, low:0};
+  locAlerts.forEach(a=>{ if(counts[a.sev]!==undefined) counts[a.sev]++; });
+  const btns=document.querySelectorAll('.alert-filters .filter-btn');
+  if(btns[0]) btns[0].textContent=`All (${counts.all})`;
+  if(btns[1]) btns[1].textContent=`Critical (${counts.critical})`;
+  if(btns[2]) btns[2].textContent=`High (${counts.high})`;
+  if(btns[3]) btns[3].textContent=`Medium (${counts.medium})`;
+  if(btns[4]) btns[4].textContent=`Low (${counts.low})`;
+}
+
+// Close modal on overlay click
+document.getElementById('modal-overlay').addEventListener('click',function(e){
+  if(e.target===this)closeAddDevice();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAddDevice();});
+
+
+// ── REPORTS RENDER ───────────────────────────────────────────────────────
+
+// Per-site SLA / MTTR seed data
+const SITE_REPORT_DATA = {
+  'HQ':            {sla:'99.98',mttrOverall:'8m', mttrCrit:'3m', mttrHigh:'10m',mttrMed:'28m',alertTotal:142,trend:'↓ 8%' },
+  'Kampala Branch':{sla:'99.61',mttrOverall:'14m',mttrCrit:'8m', mttrHigh:'18m',mttrMed:'45m',alertTotal:38, trend:'↑ 4%' },
+  'Mbarara Branch':{sla:'97.20',mttrOverall:'32m',mttrCrit:'18m',mttrHigh:'40m',mttrMed:'90m',alertTotal:61, trend:'↑ 22%'},
+  'Jinja Branch':  {sla:'99.91',mttrOverall:'11m',mttrCrit:'5m', mttrHigh:'15m',mttrMed:'32m',alertTotal:22, trend:'↓ 5%' },
+  'Entebbe Office':{sla:'99.97',mttrOverall:'7m', mttrCrit:'3m', mttrHigh:'9m', mttrMed:'20m',alertTotal:14, trend:'↓ 12%'},
+  'Gulu Branch':   {sla:'99.10',mttrOverall:'19m',mttrCrit:'10m',mttrHigh:'22m',mttrMed:'55m',alertTotal:29, trend:'↓ 2%' },
+};
+
+function renderReports(){
+  const loc = currentSite();
+  const rd  = SITE_REPORT_DATA[loc] || SITE_REPORT_DATA['Kampala Branch'];
+  const now = new Date();
+
+  // Header
+  const titleEl = document.getElementById('report-site-title');
+  if(titleEl) titleEl.textContent = loc + ' — Network Report';
+  const genEl = document.getElementById('report-generated');
+  if(genEl) genEl.textContent = 'Generated: ' + now.toUTCString().slice(0,25);
+
+  // SLA
+  const slaVal = parseFloat(rd.sla);
+  const slaEl  = document.getElementById('rpt-sla-overall');
+  if(slaEl){ slaEl.textContent = rd.sla+'%'; slaEl.style.color = slaVal>=99.5?'var(--green)':slaVal>=98?'var(--yellow)':'var(--red)'; }
+  const onlineCount  = devices.filter(d=>d.status==='ok').length;
+  const degradedCount= devices.filter(d=>d.status==='warn').length;
+  const critCount    = devices.filter(d=>d.status==='crit').length;
+  const set = (id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  set('rpt-sla-l1','Online Devices');
+  set('rpt-sla-v1', onlineCount + ' / ' + devices.length);
+  set('rpt-sla-l2','Issues');
+  set('rpt-sla-v2', (degradedCount+critCount) + ' ('+degradedCount+' warn, '+critCount+' crit)');
+  set('rpt-sla-devices', onlineCount + ' / ' + devices.length + ' ✓');
+
+  // MTTR
+  set('rpt-mttr-overall', rd.mttrOverall);
+  set('rpt-mttr-crit',    rd.mttrCrit + ' avg');
+  set('rpt-mttr-high',    rd.mttrHigh + ' avg');
+  set('rpt-mttr-med',     rd.mttrMed  + ' avg');
+
+  // Alerts
+  const locAlerts = allAlerts.filter(a=>a.loc===loc);
+  const autoRes   = Math.round(rd.alertTotal * 0.74);
+  const escalated = Math.round(rd.alertTotal * 0.10);
+  const manual    = rd.alertTotal - autoRes - escalated;
+  set('rpt-alert-total',  rd.alertTotal);
+  set('rpt-alert-trend',  rd.trend + ' vs prior month');
+  set('rpt-alert-auto',   autoRes  + ' (' + Math.round(autoRes/rd.alertTotal*100)  + '%)');
+  set('rpt-alert-esc',    escalated+ ' (' + Math.round(escalated/rd.alertTotal*100)+ '%)');
+  set('rpt-alert-manual', manual   + ' (' + Math.round(manual/rd.alertTotal*100)   + '%)');
+
+  // Device health table
+  const titleD = document.getElementById('rpt-device-title');
+  if(titleD) titleD.textContent = loc + ' — Device Health Breakdown';
+  const tbody = document.getElementById('rpt-device-tbody');
+  if(tbody){
+    tbody.innerHTML = devices.map(d=>`
+      <tr>
+        <td style="font-weight:500;color:var(--text-bright);">${d.name}</td>
+        <td><span class="tag">${d.type}</span></td>
+        <td><span class="status-dot ${d.status}"></span><span class="badge-${d.status==='ok'?'ok':d.status==='crit'?'crit':'medium'} alert-badge">${d.status.toUpperCase()}</span></td>
+        <td>
+          <div class="bw-bar-wrap">
+            <div class="bw-bar"><div class="bw-fill ${d.cpu>85?'crit':d.cpu>70?'warn':'ok'}" style="width:${d.cpu}%"></div></div>
+            <span class="bw-pct">${d.cpu}%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bw-bar-wrap">
+            <div class="bw-bar"><div class="bw-fill ${d.mem>85?'crit':d.mem>70?'warn':'ok'}" style="width:${d.mem}%"></div></div>
+            <span class="bw-pct">${d.mem}%</span>
+          </div>
+        </td>
+        <td style="color:${d.latency>100?'var(--red)':d.latency>50?'var(--yellow)':'var(--green)'}">${d.latency}ms</td>
+        <td style="color:var(--text-dim);">${d.uptime}</td>
+      </tr>`).join('');
+  }
+
+  // BW section
+  const bwTitle = document.getElementById('rpt-bw-title');
+  if(bwTitle) bwTitle.textContent = loc + ' — Bandwidth Trend (Last 30 Days)';
+  renderBwChart();
+}
+
+// ── REPORT DATA SNAPSHOT (used by PDF/CSV export) ─────────────────────────
+function getReportData(){
+  const loc = currentSite();
+  const rd  = SITE_REPORT_DATA[loc] || SITE_REPORT_DATA['Kampala Branch'];
+  const now = new Date();
+  const autoRes   = Math.round(rd.alertTotal*0.74);
+  const escalated = Math.round(rd.alertTotal*0.10);
+  return {
+    site:      loc,
+    generated: now.toUTCString(),
+    period:    'Last 30 Days',
+    sla:{overall:rd.sla+'%',target:'99.5%',
+      hq:   loc==='HQ'?rd.sla+'%':'N/A',
+      branch:loc!=='HQ'?rd.sla+'%':'N/A',
+      remote:'N/A'},
+    mttr:{overall:rd.mttrOverall,target:'<20min',critical:rd.mttrCrit,high:rd.mttrHigh,medium:rd.mttrMed},
+    alerts:{total:rd.alertTotal,autoResolved:autoRes,escalated:escalated,
+      manual:rd.alertTotal-autoRes-escalated, change:rd.trend+' vs prior month'},
+    devices:{total:devices.length,
+      online:  devices.filter(d=>d.status==='ok').length,
+      degraded:devices.filter(d=>d.status==='warn').length,
+      critical:devices.filter(d=>d.status==='crit').length},
+    sites:  [{name:loc, score:calcHealth(), latency:devices.length?Math.round(devices.reduce((s,d)=>s+d.latency,0)/devices.length)+'ms':'N/A', uptime:rd.sla+'%', type:'Current Site'}],
+    topAlerts: allAlerts.filter(a=>a.loc===loc).slice(0,5),
+  };
+}
+
+// ── LIVE UPDATES ─────────────────────────────────────────────────────────
+setInterval(()=>{
+  if(document.getElementById('view-dashboard').classList.contains('active')){
+    renderDashboard();
+  }
+},8000);
+
+</script>
+</body>
+</html>
